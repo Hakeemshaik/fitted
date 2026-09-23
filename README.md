@@ -6,7 +6,7 @@ A closet stylist for iPhone that you add to your Home Screen. Snap your clothes 
 - **Today's fit**: an outfit for today's weather and plan (Casual, Work, Date, Braai, Gym). Swipe right to save it, left to skip, or tap a piece to swap it.
 - **Colour and fit aware**: every outfit is scored on colour harmony (neutral base, one accent, echoed colours, no clashes or pattern fights) and on silhouette (loose over neat, no baggy on baggy for smart plans). The card shows the palette and fit so you can see why it works.
 - **Try before you buy**: paste a link from an online shop. Fitted pulls in the photo, name and price, adds the item to your wishlist and shows how many fits it makes with clothes you already own.
-- **Add lots of photos at once**: pick as many as you like from your gallery (up to 40 per round). Each photo is fixed for you on the phone: the background is removed with a small AI model (U²-Net), the photo is turned upright and a tilted item is straightened, it's cropped, and its colours, type and name are filled in. Check them in one grid, tap any piece to fix it, then add them all. With the AI stylist switched on, it also names each piece and fixes sideways photos.
+- **Add lots of photos at once**: pick as many as you like from your gallery (up to 40 per round). Each photo is handled on the phone: the background is removed (U²-Net), an image classifier (EfficientNet-Lite4) works out what the piece is (tee, sweater, jacket, jeans, shorts, skirt, sneakers, boots, bag, cap…), sideways and tilted photos are turned upright, bold stripes are spotted, and colours are read. Screenshots of shop or marketplace listings work too: Fitted keeps only the product photo and drops the app, text and price cards around it. Check everything in one grid, tap any piece to fix it, then add them all. With the AI stylist on, it also names each piece (from the listing title for screenshots).
 - **Build**: put a fit together yourself, let Fitted complete the empty slots, and get a fit check out of 10 (colour, fit, weather).
 - **Stylist chat**: swipe up on the bottom bar (or tap its handle). Ask what to wear, what goes with an item, whether a wishlist piece is worth buying, or plan your week.
 - **Fits**: saved outfits and a weekly log of what you wore.
@@ -67,4 +67,4 @@ Open the link in **Safari** → **Share** → **Add to Home Screen** → **Add**
 ## Develop
 `npm install`, then `npm test` runs the engine, shop-parser, API and security tests.
 
-The background remover runs in the browser from `vendor/` (ONNX Runtime Web, MIT; U²-Net small model, Apache-2.0). See `vendor/NOTICE.md`.
+The background remover runs in the browser from `vendor/` (ONNX Runtime Web, MIT; U²-Net small and EfficientNet-Lite4, both Apache-2.0). See `vendor/NOTICE.md`.

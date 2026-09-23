@@ -75,3 +75,16 @@ test('tag sends the image and maps the result', async () => {
   assert.equal(r.body.formality, 1);
   assert.equal(sent.messages[0].content[0].source.media_type, 'image/jpeg');
 });
+
+test('tag reads screenshots for the listing title and never rotates them', async () => {
+  let sent;
+  setClient({ beta: { messages: { create: async p => { sent = p; return { stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({
+    found: true, name: 'Brazil 1998 home jersey', category: 'top', kind: 'football jersey', colours: ['yellow', 'green'], pattern: 'solid', fit: 'regular', warmth: 1, dressiness: 1, styles: ['sport'], rotate: 90 }) }] }; } } } });
+  const r = await call(tag, 'POST', { image: 'data:image/jpeg;base64,' + 'A'.repeat(400), screenshot: true });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.rotate, 0);
+  assert.equal(r.body.name, 'Brazil 1998 home jersey');
+  assert.match(sent.messages[0].content[1].text, /screenshot/);
+  const plain = await call(tag, 'POST', { image: 'data:image/jpeg;base64,' + 'A'.repeat(400) });
+  assert.equal(plain.body.rotate, 90);
+});

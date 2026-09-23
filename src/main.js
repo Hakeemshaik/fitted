@@ -3,7 +3,7 @@ import {
   normItem, createEngine, guessFromText, pairsWith
 } from './engine.js';
 import { store, imgs, blobToDataUrl, dataUrlToBlob } from './db.js';
-import { processPhoto, forTagging, rotateBlob, warmUp } from './vision.js';
+import { processPhoto, forTagging, rotateBlob, warmUp, autoName, modelsReady } from './vision.js';
 import { LOGO, RAIL, TAG, CHALK, SWIPE, tee } from './art.js';
 
 /* ---------- helpers ---------- */
@@ -609,8 +609,8 @@ function drawBatch(first) {
   const tiles = B.drafts.map((x, i) => '<div class="bt ' + (x.status === 'done' ? 'done' : x.status === 'err' ? 'err' : x.status === 'work' ? 'work wait' : 'wait') + '" style="--i:' + Math.min(i, 10) + '" data-d="' + x.id + '">' +
     '<div class="ph"><img src="' + esc(x.status === 'done' ? dUrl(x) : x.thumb) + '" alt=""></div>' +
     (x.status === 'done' ? '<button class="r" data-rot="' + x.id + '" aria-label="Rotate">' + ic('rotate', 15) + '</button>' : '') + '<button class="x" data-rm="' + x.id + '" aria-label="Remove">' + ic('x', 14) + '</button>' +
-    '<b>' + esc(x.t ? x.t.name : x.status === 'err' ? 'Couldn’t read this one' : x.status === 'work' ? 'Cutting out…' : 'Waiting…') + '</b><small>' + esc(x.t ? ONE[x.t.category] + (x.ai === 'work' ? ' · naming…' : '') : ' ') + '</small></div>').join('');
-  const body = '<div class="bhead"><b>' + ready + ' of ' + total + ' ready</b><small>' + (working ? 'Cutting out backgrounds…' : 'Tap one to check it') + '</small></div><div class="prog"><i style="width:' + Math.round(100 * B.drafts.filter(x => x.status === 'done' || x.status === 'err').length / Math.max(1, total)) + '%"></i></div><div class="bgrid">' + tiles + '</div>';
+    '<b>' + esc(x.t ? x.t.name : x.status === 'err' ? 'Couldn’t read this one' : x.status === 'work' ? 'Cutting out…' : 'Waiting…') + '</b><small' + (x.t && x.conf < 0.45 && x.ai !== 'done' && !x.touched.category ? ' class="warn"' : '') + '>' + esc(x.t ? ONE[x.t.category] + (x.ai === 'work' ? ' · naming…' : x.conf < 0.45 && x.ai !== 'done' && !x.touched.category ? ' · check type' : '') : ' ') + '</small></div>').join('');
+  const body = '<div class="bhead"><b>' + ready + ' of ' + total + ' ready</b><small>' + (working ? (modelsReady() ? 'Cutting out backgrounds…' : 'Setting up the on-phone AI · first time only') : 'Tap one to check it') + '</small></div><div class="prog"><i style="width:' + Math.round(100 * B.drafts.filter(x => x.status === 'done' || x.status === 'err').length / Math.max(1, total)) + '%"></i></div><div class="bgrid">' + tiles + '</div>';
   const foot = '<button class="btn accent block" data-save="1"' + (ready ? '' : ' disabled') + '>' + ic('check', 18) + (working ? 'Add ' + ready + ' now · ' + (total - ready) + ' still working' : 'Add ' + ready + ' to your closet') + '</button>';
   const sc = $('.sheet .sc');
   if (!first && sc && $('.bgrid', sc)) { sc.classList.add('still'); const y = sc.scrollTop; sc.innerHTML = body; sc.scrollTop = y; $('.sheet .ft').innerHTML = foot; return; }
@@ -643,7 +643,7 @@ async function runCutQueue() {
         const r = await processPhoto(d.file);
         if (!B || B.drafts.indexOf(d) < 0) continue;
         const m = B.meta, g = Object.assign({}, r.guess, m.guess || {});
-        d.cut = r.cut; d.orig = r.orig; d.useCut = !!r.cut; d.method = r.method;
+        d.cut = r.cut; d.orig = r.orig; d.useCut = !!r.cut; d.method = r.method; d.context = r.context; d.conf = r.guess.conf;
         d.t = normItem({ name: m.name || r.guess.name, category: g.category, sub: g.sub, fit: g.fit || 'regular', colours: (m.fromShop && m.guess && m.guess.colours) || (r.colours.length ? r.colours : ['black']), pattern: g.pattern || 'solid', warmth: g.warmth, formality: g.formality, styles: g.styles, owned: m.owned !== false, price: m.price || null });
         d.status = 'done';
         if (S.ai.on) { d.ai = 'work'; aiQueue.push(d); runAiQueue(); }
@@ -660,14 +660,14 @@ async function runAiQueue() {
       const d = aiQueue.shift();
       if (!B || B.drafts.indexOf(d) < 0) continue;
       try {
-        const image = await forTagging(d.cut || d.orig);
-        const r = await fetch('/api/tag', { method: 'POST', headers: aiHeaders(), body: JSON.stringify({ image, hint: B.meta.name || '' }) });
+        const image = d.context ? await forTagging(d.context, 1280) : await forTagging(d.cut || d.orig);
+        const r = await fetch('/api/tag', { method: 'POST', headers: aiHeaders(), body: JSON.stringify({ image, hint: B.meta.name || '', screenshot: !!d.context }) });
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(j.error || 'failed');
         ['name', 'category', 'sub', 'fit', 'pattern', 'warmth', 'formality', 'styles', 'colours'].forEach(k => { if (!d.touched[k] && j[k] != null && !(Array.isArray(j[k]) && !j[k].length)) d.t[k] = j[k]; });
         if (B.meta.fromShop && B.meta.name && !d.touched.name && B.meta.name.length <= 28) d.t.name = B.meta.name;
         normItem(d.t);
-        if (j.rotate && !d.touched.rot) await rotateDraft(d, j.rotate, true);
+        if (j.rotate && !d.touched.rot && !d.context) await rotateDraft(d, j.rotate, true);
         d.ai = 'done';
       } catch (e) { d.ai = ''; }
       if (B) drawBatch();
@@ -685,7 +685,7 @@ function drawEditor(d, first) {
   const sg = (key, list, label) => seg('ed-' + key, list.map(v => [v, esc(label(v))]), t[key], 'data-k="' + key + '"', 'small');
   const chips = (key, list, label, multi) => '<div class="chips" data-key="' + key + '"' + (multi ? ' data-multi="1"' : '') + '>' + list.map(v => { const on = multi ? t[key].indexOf(v) > -1 : t[key] === v; return '<button class="pill' + (on ? ' on' : '') + '" data-v="' + v + '">' + (key === 'colours' ? '<i style="background:' + COLOURS[v] + '"></i>' : '') + esc(cap(v)) + '</button>'; }).join('') + '</div>';
   const dots = (key, n) => '<div class="dotsel" data-key="' + key + '">' + Array.from({ length: n }, (_, i) => '<button class="' + (i + 1 <= t[key] ? 'on' : '') + '" data-n="' + (i + 1) + '" aria-label="' + key + ' ' + (i + 1) + '"></button>').join('') + '</div>';
-  const note = d.ai === 'work' ? ic('sparkle', 14) + 'Your stylist is naming it…' : d.ai === 'done' ? ic('sparkle', 14) + 'Named by your stylist. Check it looks right.' : B.existing ? ic('create', 14) + 'Fix anything that looks off' : d.method === 'ai' ? ic('check', 14) + 'Background removed and straightened' : d.cut ? ic('check', 14) + 'Background removed' : ic('palette', 14) + 'Colours picked up from the photo';
+  const note = d.ai === 'work' ? ic('sparkle', 14) + 'Your stylist is naming it…' : d.ai === 'done' ? ic('sparkle', 14) + 'Named by your stylist. Check it looks right.' : B.existing ? ic('create', 14) + 'Fix anything that looks off' : d.context ? ic('check', 14) + 'Pulled out of your screenshot' : d.method === 'ai' ? ic('check', 14) + 'Background removed and straightened' : d.cut ? ic('check', 14) + 'Background removed' : ic('palette', 14) + 'Colours picked up from the photo';
   const body = '<div class="bigph' + (d.useCut && d.cut ? ' cut' : '') + '"><img src="' + esc(dUrl(d)) + '" alt=""><button class="circ rot" data-rot1="1" aria-label="Rotate 90°">' + ic('rotate', 18) + '</button></div>' +
     (d.cut && !B.existing ? seg('ed-bg', [['cut', 'Cut out'], ['orig', 'Original']], d.useCut ? 'cut' : 'orig', 'data-bg="1"', 'small') : '') +
     '<p class="ailine' + (d.ai === 'work' ? '' : ' muted') + '">' + note + '</p>' +
@@ -707,6 +707,9 @@ function drawEditor(d, first) {
   openSheet(single ? 'Check your piece' : 'Piece ' + (B.drafts.indexOf(d) + 1) + ' of ' + B.drafts.length, body, sh => bindEditor(sh, d), { tall: true, foot, back: single ? null : () => { readEditor(d); B.view = 'grid'; drawBatch(true); } });
   onSheetClose = cleanupBatch;
 }
+const DEFAULT_SUB = { top: 't-shirt', layer: 'jacket', bottom: 'pants', shoes: 'sneakers', extra: 'cap' };
+/** Keep the suggested name in step with type and colour until the user types their own. */
+function renameDraft(d) { if (!d.touched.name && !B.existing) { const n = $('#tn'); if (n && n.value !== d.t.name) d.touched.name = 1; else { d.t.name = autoName(d.t.colours, d.t.sub, d.t.pattern); if (n) n.value = d.t.name; } } }
 function readEditor(d) { const n = $('#tn'), s = $('#ts'); if (n) d.t.name = n.value.slice(0, 60); if (s) d.t.sub = s.value.slice(0, 40); }
 function bindEditor(sh, d) {
   const t = d.t;
@@ -718,12 +721,18 @@ function bindEditor(sh, d) {
     if (e.target.closest('[data-rot1]')) { readEditor(d); return rotateDraft(d, 90); }
     const bg = e.target.closest('[data-bg]'); if (bg) { d.useCut = bg.dataset.v === 'cut'; resetUrl(d); return redraw(); }
     const own = e.target.closest('[data-own]'); if (own) { t.owned = own.dataset.v === '1'; d.touched.owned = 1; return redraw(); }
-    const sb = e.target.closest('[data-k]'); if (sb && sb.closest('.seg')) { const k = sb.dataset.k; d.touched[k] = 1; t[k] = sb.dataset.v; return redraw(); }
+    const sb = e.target.closest('[data-k]');
+    if (sb && sb.closest('.seg')) {
+      const k = sb.dataset.k; d.touched[k] = 1; t[k] = sb.dataset.v;
+      if (k === 'category' && !d.touched.sub) { const g2 = guessFromText(DEFAULT_SUB[t.category]); t.sub = DEFAULT_SUB[t.category]; if (g2.warmth) { t.warmth = g2.warmth; t.formality = g2.formality; t.styles = g2.styles; } }
+      renameDraft(d); return redraw();
+    }
     const cb = e.target.closest('.chips[data-key] [data-v]');
     if (cb) {
       const g2 = cb.parentNode, key = g2.dataset.key, v = cb.dataset.v; d.touched[key] = 1;
       if (g2.dataset.multi) { const arr = t[key], i = arr.indexOf(v); if (i > -1) arr.splice(i, 1); else if (arr.length < 3) arr.push(v); else { arr.pop(); arr.push(v); } }
       else t[key] = v;
+      if (key === 'colours' || key === 'pattern') renameDraft(d);
       return redraw();
     }
     const db = e.target.closest('.dotsel [data-n]');
