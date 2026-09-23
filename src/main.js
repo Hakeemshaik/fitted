@@ -964,7 +964,7 @@ async function ask(q) {
   const local = ['save', 'swap'].indexOf(pre.intent) > -1 && CH.current;
   if (S.ai.on && !local) {
     try { r = await askAI(q); }
-    catch (e) { r = respond(q); note = e.status === 401 ? 'Add your access code in Settings to use the AI stylist. ' : S.ai.provider === 'local' ? 'Your PC’s AI didn’t answer, so here’s my quick take. ' : ''; if (e.status >= 500) checkAI(); }
+    catch (e) { r = respond(q); note = e.status === 401 ? 'Add your access code in Settings to use the AI stylist. ' : S.ai.provider === 'local' ? 'Your PC’s AI didn’t answer (' + (e.message || 'no reply') + '), so here’s my quick take. ' : ''; if (e.status >= 500) checkAI(); }
   } else { await wait(reduce ? 100 : 550); r = respond(q); }
   const txt = $('.txt', ai); txt.textContent = '';
   const words = (note + r.t).split(' ');

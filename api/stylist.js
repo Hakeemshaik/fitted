@@ -85,7 +85,8 @@ export default async function handler(req, res) {
     let out;
     if (localEnabled()) {
       // Local models get plain-string turns (OpenAI format).
-      const local = history.concat([{ role: 'user', content: 'Context for this question (JSON):\n' + JSON.stringify(context) + '\n\nQuestion: ' + last.content }]);
+      const slim = Object.assign({}, context, { closet: closet.map(i => { const o = {}; for (const k in i) if (i[k] != null && i[k] !== '' && !(Array.isArray(i[k]) && !i[k].length)) o[k] = i[k]; return o; }) });
+      const local = history.slice(-6).concat([{ role: 'user', content: 'Context for this question (JSON):\n' + JSON.stringify(slim) + '\n\nQuestion: ' + last.content + '\n\nAnswer as JSON: {"reply": string, "outfits": [{"name","why","top","layer","bottom","shoes","extra"}], "quick": [string]}' }]);
       try { out = await localJson({ system: SYSTEM, messages: local, schema: SCHEMA, name: 'stylist_reply' }); }
       catch (e) { if (!aiEnabled()) throw e; }
     }

@@ -59,3 +59,10 @@ test('reports which link is down', async () => {
   const off = await call('GET'); assert.equal(off.body.ai, false); assert.match(off.body.reason, /asleep|ngrok/);
   delete process.env.LLM_BASE_URL; delete process.env.LLM_MODEL;
 });
+
+test('reads JSON out of thinking-model and chatty replies', async () => {
+  const { firstJson } = await import('../api/_lib/llm.js');
+  assert.deepEqual(firstJson('<think>maybe {a} or {"x":1}</think>\nHere: {"reply":"hi","outfits":[],"quick":[]} thanks'), { reply: 'hi', outfits: [], quick: [] });
+  assert.deepEqual(firstJson('```json\n{"reply":"a {b}","outfits":[]}\n```'), { reply: 'a {b}', outfits: [] });
+  assert.equal(firstJson('no json here'), null);
+});
