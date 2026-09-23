@@ -1,0 +1,77 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { Readable } from 'node:stream';
+import { setClient } from '../api/_lib/claude.js';
+import stylist from '../api/stylist.js';
+import tag from '../api/tag.js';
+
+const call = async (handler, method, body, headers = {}) => {
+  const req = Readable.from(body ? [Buffer.from(JSON.stringify(body))] : []);
+  Object.assign(req, { method, url: '/api/x', headers });
+  let out;
+  const res = { h: {}, setHeader(k, v) { this.h[k] = v; }, end(b) { out = { status: this.statusCode, body: JSON.parse(b) }; } };
+  await handler(req, res);
+  return out;
+};
+const closet = [
+  { id: 'm1', name: 'Milan jersey', category: 'top', colours: ['red', 'black'], owned: true },
+  { id: 'j1', name: 'Denim jorts', category: 'bottom', colours: ['denim'], owned: true },
+  { id: 's1', name: 'Black runners', category: 'shoes', colours: ['black'], owned: true }
+];
+
+test('status reports AI off without a key', async () => {
+  delete process.env.ANTHROPIC_API_KEY;
+  const r = await call(stylist, 'GET');
+  assert.equal(r.body.ai, false);
+});
+
+test('stylist sends a structured request and drops invented ids', async () => {
+  process.env.ANTHROPIC_API_KEY = 'test';
+  let sent;
+  setClient({ beta: { messages: { create: async p => { sent = p; return { stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({
+    reply: 'Go matchday.', quick: ['Swap the shoes'],
+    outfits: [
+      { name: 'Matchday', why: 'Red pops.', top: 'm1', layer: '', bottom: 'j1', shoes: 's1', extra: '' },
+      { name: 'Fake', why: 'x', top: 'nope', layer: '', bottom: 'j1', shoes: 's1', extra: '' },
+      { name: 'Wrong slot', why: 'x', top: 'j1', layer: '', bottom: 'm1', shoes: 's1', extra: '' }
+    ] }) }] }; } } } });
+  const r = await call(stylist, 'POST', { closet, messages: [{ role: 'assistant', text: 'hi' }, { role: 'user', text: 'What should I wear?' }], weather: [{ date: '2026-09-23', max: 22 }] });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.reply, 'Go matchday.');
+  assert.equal(r.body.outfits.length, 1);
+  assert.deepEqual(r.body.outfits[0].items, { top: 'm1', bottom: 'j1', shoes: 's1' });
+  assert.equal(sent.model, 'claude-opus-5');
+  assert.equal(sent.fallbacks, 'default');
+  assert.deepEqual(sent.betas, ['server-side-fallback-2026-07-01']);
+  assert.equal(sent.output_config.format.type, 'json_schema');
+  assert.equal(sent.messages[0].role, 'user');
+  assert.match(sent.messages[0].content[0].text, /Milan jersey/);
+});
+
+test('refusal is surfaced as a friendly error', async () => {
+  setClient({ beta: { messages: { create: async () => ({ stop_reason: 'refusal', content: [] }) } } });
+  const r = await call(stylist, 'POST', { closet, messages: [{ role: 'user', text: 'x' }] });
+  assert.equal(r.status, 422);
+});
+
+test('access code is enforced when set', async () => {
+  process.env.FITTED_ACCESS_CODE = 'braai';
+  const r = await call(stylist, 'POST', { closet, messages: [{ role: 'user', text: 'x' }] });
+  assert.equal(r.status, 401);
+  setClient({ beta: { messages: { create: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: '{"reply":"ok","outfits":[],"quick":[]}' }] }) } } });
+  const ok = await call(stylist, 'POST', { closet, messages: [{ role: 'user', text: 'x' }] }, { 'x-fitted-code': 'braai' });
+  assert.equal(ok.status, 200);
+  delete process.env.FITTED_ACCESS_CODE;
+});
+
+test('tag sends the image and maps the result', async () => {
+  let sent;
+  setClient({ beta: { messages: { create: async p => { sent = p; return { stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({
+    found: true, name: 'Black hoodie', category: 'layer', kind: 'Hoodie', colours: ['black'], pattern: 'solid', fit: 'oversized', warmth: 3, dressiness: 1, styles: ['street'] }) }] }; } } } });
+  const r = await call(tag, 'POST', { image: 'data:image/jpeg;base64,' + 'A'.repeat(400) });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.category, 'layer');
+  assert.equal(r.body.sub, 'hoodie');
+  assert.equal(r.body.formality, 1);
+  assert.equal(sent.messages[0].content[0].source.media_type, 'image/jpeg');
+});
