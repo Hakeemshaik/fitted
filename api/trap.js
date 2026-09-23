@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   let user = null;
   if (req.method === 'POST') { try { let b = ''; for await (const c of req) { b += c; if (b.length > 4000) break; } user = (/(?:^|&)(?:log|user(?:name)?|email)=([^&]{0,60})/.exec(b) || [])[1] || null; } catch {} }
   // Never log passwords, only who knocked and on which door.
-  console.warn(JSON.stringify({ event: 'honeypot', ip, path, method: req.method, ua: String(req.headers['user-agent'] || '').slice(0, 160), user: user && decodeURIComponent(user) }));
+  console.warn(JSON.stringify({ event: 'honeypot', ip, path, method: req.method, ua: String(req.headers['user-agent'] || '').slice(0, 160), user: user && (() => { try { return decodeURIComponent(user.replace(/\+/g, ' ')); } catch { return user; } })() }));
   flagIp(ip);
   await wait(600 + Math.random() * 900);
   const [type, body] = bait(path);

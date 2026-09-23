@@ -601,13 +601,23 @@ function startBatch(files, meta) {
 const dUrl = d => { if (!d.url) d.url = URL.createObjectURL(d.useCut && d.cut ? d.cut : d.orig || d.file); return d.url; };
 const resetUrl = d => { if (d.url) { const u = d.url; setTimeout(() => URL.revokeObjectURL(u), 3000); } d.url = null; };
 function batchDone() { return B.drafts.filter(d => d.status === 'done'); }
-function drawBatch(first) {
+let redrawLater = false;
+function drawBatch(first, changed) {
   if (!B) return;
   const d = B.view !== 'grid' && B.drafts.filter(x => x.id === B.view)[0];
-  if (d) return drawEditor(d, first);
+  if (d && d.status === 'done') {
+    const onScreen = $('.sheet #tn');
+    if (!first && onScreen) {
+      if (changed && changed !== d) return;           // another photo finished: the editor has nothing new to show
+      const a = document.activeElement;
+      if (a && sheet.contains(a) && a.tagName === 'INPUT') { redrawLater = true; return; } // don't wipe what they're typing
+      readEditor(d);
+    }
+    return drawEditor(d, first);
+  }
   const ready = batchDone().length, total = B.drafts.length, working = B.drafts.some(x => x.status === 'wait' || x.status === 'work');
   const tiles = B.drafts.map((x, i) => '<div class="bt ' + (x.status === 'done' ? 'done' : x.status === 'err' ? 'err' : x.status === 'work' ? 'work wait' : 'wait') + '" style="--i:' + Math.min(i, 10) + '" data-d="' + x.id + '">' +
-    '<div class="ph"><img src="' + esc(x.status === 'done' ? dUrl(x) : x.thumb) + '" alt=""></div>' +
+    '<div class="ph">' + (x.status === 'done' ? '<img src="' + esc(dUrl(x)) + '" alt="">' : x.status === 'work' ? '<img src="' + esc(x.thumb) + '" alt="">' : '<span class="ph0"></span>') + '</div>' +
     (x.status === 'done' ? '<button class="r" data-rot="' + x.id + '" aria-label="Rotate">' + ic('rotate', 15) + '</button>' : '') + '<button class="x" data-rm="' + x.id + '" aria-label="Remove">' + ic('x', 14) + '</button>' +
     '<b>' + esc(x.t ? x.t.name : x.status === 'err' ? 'Couldn’t read this one' : x.status === 'work' ? 'Cutting out…' : 'Waiting…') + '</b><small' + (x.t && x.conf < 0.45 && x.ai !== 'done' && !x.touched.category ? ' class="warn"' : '') + '>' + esc(x.t ? ONE[x.t.category] + (x.ai === 'work' ? ' · naming…' : x.conf < 0.45 && x.ai !== 'done' && !x.touched.category ? ' · check type' : '') : ' ') + '</small></div>').join('');
   const body = '<div class="bhead"><b>' + ready + ' of ' + total + ' ready</b><small>' + (working ? (modelsReady() ? 'Cutting out backgrounds…' : 'Setting up the on-phone AI · first time only') : 'Tap one to check it') + '</small></div><div class="prog"><i style="width:' + Math.round(100 * B.drafts.filter(x => x.status === 'done' || x.status === 'err').length / Math.max(1, total)) + '%"></i></div><div class="bgrid">' + tiles + '</div>';
@@ -620,9 +630,10 @@ function drawBatch(first) {
 }
 function bindBatch(sh) {
   sh.onclick = e => {
+    if (!B) return;
     const rm = e.target.closest('[data-rm]'), rot = e.target.closest('[data-rot]'), t = e.target.closest('[data-d]');
     if (e.target.closest('[data-save]')) return saveBatch();
-    if (rm) { B.drafts = B.drafts.filter(x => x.id !== rm.dataset.rm); if (!B.drafts.length) return closeSheet(); return drawBatch(); }
+    if (rm) { const gone = B.drafts.filter(x => x.id === rm.dataset.rm)[0]; if (gone) { URL.revokeObjectURL(gone.thumb); resetUrl(gone); } B.drafts = B.drafts.filter(x => x.id !== rm.dataset.rm); if (!B.drafts.length) return closeSheet(); return drawBatch(); }
     if (rot) return rotateDraft(B.drafts.filter(x => x.id === rot.dataset.rot)[0], 90);
     if (t) { const d = B.drafts.filter(x => x.id === t.dataset.d)[0]; if (d && d.status === 'done') { B.view = d.id; drawBatch(true); } }
   };
@@ -638,17 +649,17 @@ async function runCutQueue() {
   try {
     for (;;) {
       const d = B && B.drafts.filter(x => x.status === 'wait')[0]; if (!d) break;
-      d.status = 'work'; drawBatch();
+      d.status = 'work'; drawBatch(false, d);
       try {
         const r = await processPhoto(d.file);
         if (!B || B.drafts.indexOf(d) < 0) continue;
         const m = B.meta, g = Object.assign({}, r.guess, m.guess || {});
         d.cut = r.cut; d.orig = r.orig; d.useCut = !!r.cut; d.method = r.method; d.context = r.context; d.conf = r.guess.conf;
         d.t = normItem({ name: m.name || r.guess.name, category: g.category, sub: g.sub, fit: g.fit || 'regular', colours: (m.fromShop && m.guess && m.guess.colours) || (r.colours.length ? r.colours : ['black']), pattern: g.pattern || 'solid', warmth: g.warmth, formality: g.formality, styles: g.styles, owned: m.owned !== false, price: m.price || null });
-        d.status = 'done';
+        d.status = 'done'; URL.revokeObjectURL(d.thumb);
         if (S.ai.on) { d.ai = 'work'; aiQueue.push(d); runAiQueue(); }
       } catch (e) { d.status = 'err'; }
-      drawBatch();
+      drawBatch(false, d);
     }
   } finally { cutting = false; }
 }
@@ -670,15 +681,19 @@ async function runAiQueue() {
         if (j.rotate && !d.touched.rot && !d.context) await rotateDraft(d, j.rotate, true);
         d.ai = 'done';
       } catch (e) { d.ai = ''; }
-      if (B) drawBatch();
+      if (B) drawBatch(false, d);
     }
   } finally { tagging = false; }
 }
-async function rotateDraft(d, deg, quiet) {
-  if (!d || !d.orig) return;
+function rotateDraft(d, deg, quiet) {
+  if (!d || !d.orig) return Promise.resolve();
   if (!quiet) d.touched.rot = 1;
-  d.cut = d.cut && await rotateBlob(d.cut, deg); d.orig = await rotateBlob(d.orig, deg);
-  resetUrl(d); if (B) drawBatch();
+  // chain turns so quick taps (or a tap during the AI's own turn) all land, and cut and original stay in step
+  d.rotP = (d.rotP || Promise.resolve()).then(async () => {
+    const [c, o] = await Promise.all([d.cut ? rotateBlob(d.cut, deg) : null, rotateBlob(d.orig, deg)]);
+    d.cut = c; d.orig = o; resetUrl(d); if (B) drawBatch(false, d);
+  }).catch(() => {});
+  return d.rotP;
 }
 function drawEditor(d, first) {
   const t = d.t, more = !!d.more, single = B.drafts.length === 1;
@@ -713,9 +728,11 @@ function renameDraft(d) { if (!d.touched.name && !B.existing) { const n = $('#tn
 function readEditor(d) { const n = $('#tn'), s = $('#ts'); if (n) d.t.name = n.value.slice(0, 60); if (s) d.t.sub = s.value.slice(0, 40); }
 function bindEditor(sh, d) {
   const t = d.t;
+  sh.onfocusout = () => { if (redrawLater) { redrawLater = false; setTimeout(() => { if (B && B.view === d.id && !(document.activeElement && sheet.contains(document.activeElement) && document.activeElement.tagName === 'INPUT')) { readEditor(d); drawEditor(d, false); } }, 0); } };
   const redraw = () => { readEditor(d); drawEditor(d, false); };
   sh.oninput = e => { if (e.target.id === 'tn') d.touched.name = 1; if (e.target.id === 'ts') { d.touched.sub = 1; const g2 = guessFromText(e.target.value); if (g2.category && !d.touched.category) { t.category = g2.category; t.warmth = g2.warmth; t.formality = g2.formality; t.styles = g2.styles; } } };
   sh.onclick = async e => {
+    if (!B) return;
     if (e.target.closest('[data-done]')) { readEditor(d); return B.drafts.length === 1 ? saveBatch() : (B.view = 'grid', drawBatch(true)); }
     if (e.target.closest('[data-more]')) { d.more = !d.more; return redraw(); }
     if (e.target.closest('[data-rot1]')) { readEditor(d); return rotateDraft(d, 90); }
@@ -739,8 +756,14 @@ function bindEditor(sh, d) {
     if (db) { const key = db.parentNode.dataset.key; d.touched[key] = 1; t[key] = +db.dataset.n; return redraw(); }
   };
 }
+let saving = false;
 async function saveBatch() {
-  if (!B) return;
+  if (!B || saving) return;
+  saving = true;
+  try { await saveBatchNow(); } finally { saving = false; }
+}
+async function saveBatchNow() {
+  const btn = $('.sheet [data-save], .sheet [data-done]'); if (btn) btn.disabled = true;
   if (B.view !== 'grid') { const cur = B.drafts.filter(x => x.id === B.view)[0]; if (cur) readEditor(cur); }
   const ready = batchDone(), meta = B.meta, added = [];
   for (const d of ready) {
@@ -755,12 +778,12 @@ async function saveBatch() {
     it.img = (await saveBlob(it.id, blob)) ? 'idb' : await blobToDataUrl(blob);
     S.items.push(it); added.push(it);
   }
-  const rest = B.drafts.length - ready.length;
+  const failed = B.drafts.filter(x => x.status === 'err').length, left = B.drafts.length - ready.length - failed;
   persist(); refresh(); closeSheet(); haptic();
   if (added.length === 1 && !added[0].owned) { S.closetView = 'wish'; render(); toast('On your wishlist', 'Here’s how it works with your closet'); setTimeout(() => itemSheet(added[0].id), 380); return; }
   S.closetView = added.some(i => i.owned) ? 'owned' : 'wish'; S.closetCat = 'all';
   go('closet');
-  toast(added.length === 1 ? 'Added ' + added[0].name : 'Added ' + added.length + ' pieces', rest ? rest + ' couldn’t be read and were skipped' : 'Tap any piece to fine-tune it');
+  toast(added.length === 1 ? 'Added ' + added[0].name : 'Added ' + added.length + ' pieces', left ? left + ' still processing ' + (left === 1 ? 'was' : 'were') + ' left out. Add ' + (left === 1 ? 'it' : 'them') + ' again.' : failed ? failed + ' couldn’t be read and ' + (failed === 1 ? 'was' : 'were') + ' skipped' : 'Tap any piece to fine-tune it');
 }
 async function editExisting(ex) {
   const t = clone(ex);

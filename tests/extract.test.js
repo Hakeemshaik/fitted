@@ -49,9 +49,9 @@ test('Shopify .js JSON', () => {
 test('decode entities', () => { assert.equal(decode('Men&#x27;s &quot;Tee&quot;'), 'Men\'s "Tee"'); });
 
 test('private and reserved addresses are refused', async () => {
-  for (const ip of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1'])
+  for (const ip of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1', '::ffff:7f00:1', '::ffff:a9fe:a9fe', '::127.0.0.1', '64:ff9b::a9fe:a9fe', 'fec0::1', '100::1', '2002:7f00:1::', '::'])
     assert.ok(isPrivateIp(ip), ip);
-  for (const ip of ['8.8.8.8', '41.0.0.1', '2606:4700::1111']) assert.ok(!isPrivateIp(ip), ip);
-  for (const u of ['http://localhost/x', 'http://127.0.0.1/', 'http://[::1]/', 'http://169.254.169.254/latest', 'file:///etc/passwd', 'http://user:pw@shop.com/', 'not a url'])
+  for (const ip of ['8.8.8.8', '41.0.0.1', '2606:4700::1111', '::ffff:8.8.8.8', '2a00:1450:4001::200e']) assert.ok(!isPrivateIp(ip), ip);
+  for (const u of ['http://localhost/x', 'http://127.0.0.1/', 'http://[::1]/', 'http://169.254.169.254/latest', 'http://[::ffff:127.0.0.1]/', 'http://[::ffff:169.254.169.254]/', 'file:///etc/passwd', 'http://user:pw@shop.com/', 'not a url'])
     await assert.rejects(assertPublicUrl(u), u);
 });

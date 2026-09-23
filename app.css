@@ -396,6 +396,8 @@ em.it{font-family:var(--serif);font-style:italic;color:var(--accent);font-weight
 .bt{position:relative;background:var(--card);border-radius:22px;padding:7px 7px 10px;box-shadow:var(--lift);text-align:center;min-width:0;animation:up .45s var(--out) both;animation-delay:calc(var(--i,0) * 40ms)}
 .bt small.warn{color:var(--accent);font-weight:700}
 .bt .ph{position:relative;aspect-ratio:1/1;border-radius:16px;overflow:hidden;background:var(--paper-2);display:grid;place-items:center;padding:10%}
+.bt .ph0{width:46%;aspect-ratio:1/1;border-radius:14px;background:linear-gradient(100deg,rgba(21,20,18,.06) 30%,rgba(21,20,18,.12) 50%,rgba(21,20,18,.06) 70%) 0 0/300% 100%;animation:shim 1.6s linear infinite}
+@keyframes shim{to{background-position:-150% 0}}
 .bt .ph img{max-width:100%;max-height:100%;object-fit:contain;transition:opacity .5s,transform .6s var(--spring),filter .5s}
 .bt.wait .ph img{opacity:.55;filter:saturate(.4) blur(1px);transform:scale(.96)}
 .bt.done .ph{background:var(--card) repeating-conic-gradient(var(--paper) 0 25%,transparent 0 50%) 0 0/14px 14px}
