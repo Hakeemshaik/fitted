@@ -7,7 +7,7 @@ import tag from '../api/tag.js';
 
 const call = async (handler, method, body, headers = {}) => {
   const req = Readable.from(body ? [Buffer.from(JSON.stringify(body))] : []);
-  Object.assign(req, { method, url: '/api/x', headers });
+  Object.assign(req, { method, url: '/api/x', headers: Object.assign({ host: 'fitted.test', origin: 'https://fitted.test' }, headers) });
   let out;
   const res = { h: {}, setHeader(k, v) { this.h[k] = v; }, end(b) { out = { status: this.statusCode, body: JSON.parse(b) }; } };
   await handler(req, res);

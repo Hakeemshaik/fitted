@@ -1,8 +1,10 @@
+import { guard } from './_lib/guard.js';
 import { safeFetch, send, queryParam, HttpError } from './_lib/http.js';
 import { extractProduct, fromShopifyJs } from './_lib/extract.js';
 
 /** GET /api/product?url=<shop link> -> { name, brand, price, currency, images, colour, site, url } */
 export default async function handler(req, res) {
+  if (!guard(req, res, { limit: 20, bucket: 'product' })) return;
   const link = (queryParam(req, 'url') || '').trim();
   if (!link) return send(res, 400, { error: 'Paste a link to a product page' });
   try {

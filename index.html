@@ -4,7 +4,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <title>Fitted</title>
 <meta name="description" content="Your closet, styled daily.">
-<meta name="theme-color" content="#F5F0EF">
+<meta name="theme-color" content="#F2EDE4">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -12,28 +12,27 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Manrope:wght@500;600;700;800&display=swap">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap">
 <link rel="stylesheet" href="app.css">
-<style>:root{--sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px)}</style>
 </head><body>
 <div class="app" id="app">
   <main id="screens"></main>
   <div class="topfade"></div>
 
   <nav class="tabbar" id="tabbar" aria-label="Main">
-    <p class="barhint" id="barhint"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Swipe up on the bar to ask your stylist</p>
-    <div class="bar glass" id="bar"><button class="grab" id="grab" type="button" aria-label="Open the stylist chat"><i></i></button><div class="tabs" id="tabs"></div></div>
+    <p class="barhint" id="barhint">Swipe up on the bar to ask your stylist</p>
+    <div class="bar " id="bar"><button class="grab" id="grab" type="button" aria-label="Open the stylist chat"><i></i></button><div class="tabs" id="tabs"></div></div>
   </nav>
 
   <div class="chatdim" id="chatdim"></div>
   <section class="chat" id="chat" aria-hidden="true" aria-label="Stylist chat">
     <div class="chead" id="chead">
       <span class="grab2"></span>
-      <div class="ctitle"><h4>Fitted stylist</h4><p id="aistatus"><i></i>Style rules</p></div>
-      <button class="circ glass" id="chatClose" type="button" aria-label="Close chat"></button>
+      <div class="ctitle"><h4>Your <em>stylist</em></h4><p id="aistatus"><i></i>Style rules</p></div>
+      <button class="circ " id="chatClose" type="button" aria-label="Close chat"></button>
     </div>
     <div class="cbody" id="cbody"></div>
-    <form class="comp glass" id="comp">
+    <form class="comp " id="comp">
       <input id="q" type="text" placeholder="Ask about your closet…" autocomplete="off" enterkeyhint="send" aria-label="Message">
       <button class="circ" id="mic" type="button" aria-label="Speak"></button>
       <button class="send" type="submit" aria-label="Send"></button>
@@ -41,9 +40,8 @@
   </section>
 
   <div class="sheetwrap" id="sheetwrap"><div class="bd" id="sheetbd"></div><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
-  <div class="toast glass" id="toast" role="status"></div>
+  <div class="toast " id="toast" role="status"></div>
   <div id="onbHost"></div>
 </div>
 <script type="module" src="src/main.js"></script>
-<script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>
 </body></html>

@@ -1,3 +1,4 @@
+import { guard } from './_lib/guard.js';
 import { safeFetch, queryParam, HttpError } from './_lib/http.js';
 
 const OK = /^image\/(jpeg|jpg|png|webp|gif|avif)$/;
@@ -10,6 +11,7 @@ const sniff = b =>
 
 /** GET /api/img?url=<image> — same-origin copy of a shop image so the app can read its pixels. */
 export default async function handler(req, res) {
+  if (!guard(req, res, { limit: 60, bucket: 'img' })) return;
   try {
     const link = queryParam(req, 'url');
     if (!link) throw new HttpError(400, 'Missing image link');

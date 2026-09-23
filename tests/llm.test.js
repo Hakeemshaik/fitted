@@ -22,7 +22,7 @@ test.after(() => srv.close());
 
 const call = async (method, body) => {
   const req = Readable.from(body ? [Buffer.from(JSON.stringify(body))] : []);
-  Object.assign(req, { method, url: '/api/stylist', headers: {} });
+  Object.assign(req, { method, url: '/api/stylist', headers: { host: 'fitted.test', origin: 'https://fitted.test' } });
   let out; const res = { setHeader() {}, end(x) { out = { status: this.statusCode, body: JSON.parse(x) }; } };
   await stylist(req, res); return out;
 };

@@ -2,8 +2,44 @@
   "functions": {
     "api/*.js": { "maxDuration": 60 }
   },
+  "rewrites": [
+    { "source": "/.env", "destination": "/api/trap?p=/.env" },
+    { "source": "/.env.:rest", "destination": "/api/trap?p=/.env" },
+    { "source": "/.git/:path*", "destination": "/api/trap?p=/.git" },
+    { "source": "/.aws/:path*", "destination": "/api/trap?p=/.aws" },
+    { "source": "/wp-login.php", "destination": "/api/trap?p=/wp-login" },
+    { "source": "/wp-admin/:path*", "destination": "/api/trap?p=/wp-admin" },
+    { "source": "/wp-content/:path*", "destination": "/api/trap?p=/wp-content" },
+    { "source": "/xmlrpc.php", "destination": "/api/trap?p=/xmlrpc" },
+    { "source": "/admin", "destination": "/api/trap?p=/admin" },
+    { "source": "/admin/:path*", "destination": "/api/trap?p=/admin" },
+    { "source": "/admin-backup/:path*", "destination": "/api/trap?p=/admin-backup" },
+    { "source": "/phpmyadmin/:path*", "destination": "/api/trap?p=/phpmyadmin" },
+    { "source": "/pma/:path*", "destination": "/api/trap?p=/phpmyadmin" },
+    { "source": "/api/admin/:path*", "destination": "/api/trap?p=/api/admin" },
+    { "source": "/api/users", "destination": "/api/trap?p=/api/users" },
+    { "source": "/api/v1/:path*", "destination": "/api/trap?p=/api/v1" },
+    { "source": "/server-status", "destination": "/api/trap?p=/server-status" },
+    { "source": "/config.json", "destination": "/api/trap?p=/config.json" },
+    { "source": "/backup.zip", "destination": "/api/trap?p=/backup" },
+    { "source": "/db.sql", "destination": "/api/trap?p=/db" }
+  ],
   "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' blob: data: https://api.open-meteo.com https://geocoding-api.open-meteo.com; worker-src 'self' blob:; manifest-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests" },
+        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "camera=(self), microphone=(self), geolocation=(self), payment=(), usb=(), interest-cohort=()" },
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
+        { "key": "Cross-Origin-Resource-Policy", "value": "same-origin" }
+      ]
+    },
     { "source": "/sw.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
-    { "source": "/src/(.*)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+    { "source": "/src/(.*)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+    { "source": "/vendor/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }] }
   ]
 }

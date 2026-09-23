@@ -6,10 +6,17 @@ A closet stylist for iPhone that you add to your Home Screen. Snap your clothes 
 - **Today's fit**: an outfit for today's weather and plan (Casual, Work, Date, Braai, Gym). Swipe right to save it, left to skip, or tap a piece to swap it.
 - **Colour and fit aware**: every outfit is scored on colour harmony (neutral base, one accent, echoed colours, no clashes or pattern fights) and on silhouette (loose over neat, no baggy on baggy for smart plans). The card shows the palette and fit so you can see why it works.
 - **Try before you buy**: paste a link from an online shop. Fitted pulls in the photo, name and price, adds the item to your wishlist and shows how many fits it makes with clothes you already own.
-- **Add from a photo**: the plain background is cut out on the phone, the item is cropped and its colours are read automatically.
+- **Add lots of photos at once**: pick as many as you like from your gallery (up to 40 per round). Each photo is fixed for you on the phone: the background is removed with a small AI model (U²-Net), the photo is turned upright and a tilted item is straightened, it's cropped, and its colours, type and name are filled in. Check them in one grid, tap any piece to fix it, then add them all. With the AI stylist switched on, it also names each piece and fixes sideways photos.
 - **Build**: put a fit together yourself, let Fitted complete the empty slots, and get a fit check out of 10 (colour, fit, weather).
 - **Stylist chat**: swipe up on the bottom bar (or tap its handle). Ask what to wear, what goes with an item, whether a wishlist piece is worth buying, or plan your week.
 - **Fits**: saved outfits and a weekly log of what you wore.
+
+## Security
+- Strict security headers on every page: a Content Security Policy that only runs Fitted's own code, HSTS, no framing, no sniffing, and locked-down browser permissions.
+- Every API route checks that the request comes from the Fitted app itself, limits how often one visitor can call it, and turns away known attack scanners.
+- Shop-link import only fetches public web addresses. Every redirect is checked, so the server can't be tricked into reaching private networks.
+- **Honeypots**: the paths that bots probe (`/.env`, `/.git/config`, `/wp-login.php`, `/phpmyadmin`, `/admin`, `/api/v1` and more) answer with fake bait. Anyone who touches one is logged and blocked from the real API for 24 hours. See who knocked in **Vercel → Logs** by searching `honeypot`.
+- The blocklist and rate limits live in each server instance's memory, so they're a speed bump, not a wall. For heavy traffic, turn on **Vercel → Firewall** (Bot Protection and Attack Challenge Mode are free).
 
 ## Deploy on Vercel
 1. On vercel.com: **Add New → Project**, import `fitted`, keep Framework Preset = **Other**, then **Deploy**.
@@ -58,4 +65,6 @@ Open the link in **Safari** → **Share** → **Add to Home Screen** → **Add**
 - A few big shops block link imports. For those, screenshot the item and add it from Photos.
 
 ## Develop
-`npm install`, then `npm test` runs the engine, shop-parser and API tests.
+`npm install`, then `npm test` runs the engine, shop-parser, API and security tests.
+
+The background remover runs in the browser from `vendor/` (ONNX Runtime Web, MIT; U²-Net small model, Apache-2.0). See `vendor/NOTICE.md`.
