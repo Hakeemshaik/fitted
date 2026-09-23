@@ -1,0 +1,12 @@
+# ngrok agent config for running LM Studio's tunnel as a background service.
+# 1) Put your values in below (or run: ngrok config add-authtoken <token>)
+# 2) Validate:  ngrok config check --config "<this file>"
+# 3) Admin terminal:  ngrok service install --config "<this file>"  then  ngrok service start
+version: "3"
+agent:
+  authtoken: YOUR_NGROK_AUTHTOKEN
+tunnels:
+  lmstudio:
+    proto: http
+    addr: 1234                                  # LM Studio server port
+    domain: YOUR-STATIC-DOMAIN.ngrok-free.dev   # free static domain from the ngrok dashboard

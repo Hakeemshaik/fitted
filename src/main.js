@@ -118,11 +118,15 @@ function loadWeather() {
 }
 
 /* ---------- AI availability ---------- */
+let aiChecked = 0;
 function checkAI() {
+  aiChecked = Date.now();
   fetch('/api/stylist', { headers: { accept: 'application/json' } }).then(r => (r.ok ? r.json() : null)).then(j => {
-    S.ai = { on: !!(j && j.ai), locked: !!(j && j.locked) };
-    const st = $('#aistatus');
-    st.innerHTML = '<i class="' + (S.ai.on ? 'on' : '') + '"></i>' + (S.ai.on ? 'AI stylist · knows your closet' : 'Style rules · add an AI key to go further');
+    S.ai = { on: !!(j && j.ai), locked: !!(j && j.locked), provider: j && j.provider, model: j && j.model, reason: j && j.reason };
+    const st = $('#aistatus'), local = S.ai.provider === 'local';
+    st.innerHTML = '<i class="' + (S.ai.on ? 'on' : '') + '"></i>' + esc(S.ai.on ? (local ? 'Local AI' + (S.ai.model ? ' · ' + S.ai.model : '') : 'AI stylist · knows your closet')
+      : local ? 'PC offline · using style rules' : 'Style rules');
+    st.title = S.ai.reason || '';
   }).catch(() => {});
 }
 const aiHeaders = () => ({ 'content-type': 'application/json', 'x-fitted-code': S.set.code || '' });
@@ -422,7 +426,8 @@ function settingsSheet() {
     '<div class="field"><label>Colours I love</label>' + colourChips('love') + '</div>' +
     '<div class="field"><label>Colours I avoid</label>' + colourChips('avoid') + '</div>' +
     '<h4 class="group">Weather</h4><p class="muted small">Now: ' + esc(S.set.loc.name) + '</p>' + locationBlock() +
-    '<h4 class="group">Stylist AI</h4><p class="muted small">' + (S.ai.on ? 'On. The stylist chat and photo tagging use Claude.' : 'Off. Fitted is styling with its built-in rules. Add an ANTHROPIC_API_KEY to your Vercel project to switch on the AI stylist and automatic photo tagging.') + '</p>' +
+    '<h4 class="group">Stylist AI</h4><p class="muted small">' + esc(S.ai.on ? (S.ai.provider === 'local' ? 'On. Using the model on your PC' + (S.ai.model ? ' (' + S.ai.model + ')' : '') + ' through ngrok.' : 'On. The stylist chat and photo tagging use Claude.')
+      : S.ai.provider === 'local' ? 'Your PC’s AI is offline: ' + (S.ai.reason || 'no answer') + ' Fitted uses its built-in rules until it’s back.' : 'Off. Fitted is styling with its built-in rules. Set LLM_BASE_URL and LLM_MODEL in Vercel to use the AI on your PC.') + '</p>' +
     (S.ai.locked ? '<div class="field"><label for="acode">Access code</label><input type="text" id="acode" value="' + esc(S.set.code) + '" placeholder="The FITTED_ACCESS_CODE you set on Vercel" autocomplete="off"></div>' : '') +
     '<h4 class="group">Your data</h4><p class="muted small">Your closet lives on this phone. Back it up before deleting the app.</p>' +
     '<div class="acts2"><button class="btn ghost" data-s="export">' + ic('dl', 18) + 'Back up</button><label class="btn ghost filebtn">' + ic('ul', 18) + 'Restore<input type="file" accept="application/json,.json" id="importf"></label></div>' +
@@ -754,6 +759,7 @@ function openChat() {
   chat.classList.add('open'); dim.classList.add('on'); chat.inert = false; chat.setAttribute('aria-hidden', 'false');
   chat.style.transition = ''; dim.style.transition = ''; chat.style.transform = ''; dim.style.opacity = '';
   if (!cbody.children.length) hello();
+  if (Date.now() - aiChecked > 30000) checkAI();
   if (!S.set.chatUsed) { S.set.chatUsed = true; persist(); $('#barhint').classList.remove('on'); }
   try { history.pushState({ chat: 1 }, ''); } catch (e) {}
 }
@@ -924,7 +930,7 @@ function respond(q) {
     const tops = owned().filter(i => i.category === 'top').length;
     return { t: 'Here are the next five days' + (tops < 5 ? '. You have ' + tops + ' tops, so some repeat; add more and I’ll spread them out.' : ', no repeats.'), x: '<div class="week">' + out + '</div>', q: ['What should I wear today?', 'Start over'] };
   }
-  return { t: 'I can suggest fits for any day or occasion, swap pieces, match colours, plan your week and tell you if a wishlist piece is worth buying.' + (S.ai.on ? '' : ' Open questions work once the AI stylist is switched on in Settings.'), q: ['What should I wear today?', 'Plan my week'] };
+  return { t: 'I can suggest fits for any day or occasion, swap pieces, match colours, plan your week and tell you if a wishlist piece is worth buying.' + (S.ai.on ? '' : ' Open questions work once your PC’s AI is connected (see Settings).'), q: ['What should I wear today?', 'Plan my week'] };
 }
 async function askAI(q) {
   const closet = S.items.map(i => ({ id: i.id, name: i.name, category: i.category, kind: i.sub, colours: i.colours, pattern: i.pattern, fit: i.fit, warmth: i.warmth, dressiness: i.formality, styles: i.styles, lastWornDays: E.lastWornDays(i.id) === Infinity ? null : E.lastWornDays(i.id), owned: i.owned, price: i.price || null }));
@@ -958,7 +964,7 @@ async function ask(q) {
   const local = ['save', 'swap'].indexOf(pre.intent) > -1 && CH.current;
   if (S.ai.on && !local) {
     try { r = await askAI(q); }
-    catch (e) { r = respond(q); note = e.status === 401 ? 'Add your access code in Settings to use the AI stylist. ' : ''; }
+    catch (e) { r = respond(q); note = e.status === 401 ? 'Add your access code in Settings to use the AI stylist. ' : S.ai.provider === 'local' ? 'Your PC’s AI didn’t answer, so here’s my quick take. ' : ''; if (e.status >= 500) checkAI(); }
   } else { await wait(reduce ? 100 : 550); r = respond(q); }
   const txt = $('.txt', ai); txt.textContent = '';
   const words = (note + r.t).split(' ');

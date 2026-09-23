@@ -17,7 +17,32 @@ A closet stylist for iPhone that you add to your Home Screen. Snap your clothes 
 
 Shop-link import runs on Vercel functions (`api/`), so it works on the deployed site, not when the files are opened straight from disk.
 
-## Switch on the AI stylist (optional)
+## Use the AI on your PC (LM Studio + ngrok)
+The stylist chat and photo tagging can run on a model on your own PC. When the PC is off, Fitted quietly falls back to its built-in rules.
+
+1. **LM Studio:** load a model (a small instruct model such as Llama 3.2 3B or Qwen 2.5 3B is fast enough; use a vision model such as Gemma 3 or Qwen2-VL if you want photo tagging). Open the **Developer** tab and start the server (port 1234). Copy the model's **API Model Identifier**.
+2. **ngrok:** make a free account, claim your free static domain (Domains page), then run
+   `ngrok http 1234 --url=<name>.ngrok-free.dev`
+   The screen must show `-> http://localhost:1234`.
+3. **Vercel → Settings → Environment Variables**, then **Redeploy**:
+   | Name | Value |
+   |---|---|
+   | `LLM_BASE_URL` | `https://<name>.ngrok-free.dev/v1` |
+   | `LLM_MODEL` | the API Model Identifier from LM Studio |
+   | `LLM_API_KEY` | `lm-studio` (unless you turned on LM Studio auth) |
+   | `LLM_MERGE_SYSTEM` | `1` only for models without a system role (e.g. Mistral 7B Instruct v0.2) |
+4. **Test from your phone:** open `https://<name>.ngrok-free.dev/v1/models`. A list of models means the tunnel works. The chat header shows **Local AI · <model>** when it's connected.
+
+Keep the ngrok URL private: anyone with it can use your PC's model. The app calls it from the server, so it never reaches the phone. Optional: set `FITTED_ACCESS_CODE` to a password and enter it in **Settings → Stylist AI**, so only your phone can use the AI through your Fitted link.
+
+**Keep it online while you're out:**
+- Set the PC to never sleep when plugged in (Windows: Settings → System → Power & battery → Screen and sleep → Never).
+- In LM Studio, turn on starting the server at login and turn off auto-unload (Idle TTL) for the model.
+- Run ngrok as a service so it restarts with the PC: fill in `local-ai/ngrok.yml`, then in an Administrator terminal run `ngrok service install --config "<path to ngrok.yml>"` and `ngrok service start`.
+
+**If the chat says "PC offline":** run `local-ai/check_llm.ps1` (Windows) or `local-ai/check_llm.sh` (macOS/Linux) on the PC. It checks each link (LM Studio server, ngrok, public URL, model) and tells you which one is broken. **Settings → Stylist AI** in the app shows the reason too.
+
+## Switch on the AI stylist with Claude instead (optional)
 Without a key, Fitted styles with its built-in rules. To use Claude for the chat and for automatic photo tagging:
 1. In Vercel, open the project → **Settings → Environment Variables**.
 2. Add `ANTHROPIC_API_KEY` with your key from console.anthropic.com.

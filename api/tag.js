@@ -1,5 +1,6 @@
 import { send, readJson, HttpError } from './_lib/http.js';
-import { askJson, checkAccess } from './_lib/claude.js';
+import { askJson, aiEnabled, checkAccess } from './_lib/claude.js';
+import { localEnabled, localJson } from './_lib/llm.js';
 
 const COLOURS = ['black', 'white', 'grey', 'silver', 'navy', 'denim', 'beige', 'cream', 'brown', 'olive', 'green', 'blue', 'purple', 'pink', 'red', 'burgundy', 'orange', 'yellow'];
 const SCHEMA = {
@@ -30,18 +31,27 @@ export default async function handler(req, res) {
     const media = m ? m[1] : 'image/jpeg';
     if (!data || typeof data !== 'string' || data.length < 200) throw new HttpError(400, 'Send a photo');
     const hint = String(body.hint || '').slice(0, 200);
-    const out = await askJson({
-      system: 'You tag clothing photos for a closet app. Describe the single main item in the photo. Be accurate about colour and cut; do not guess brands you cannot see.',
+    const system = 'You tag clothing photos for a closet app. Describe the single main item in the photo. Be accurate about colour and cut; do not guess brands you cannot see.';
+    const ask = hint ? 'The shop calls it: ' + hint + '\nTag this item.' : 'Tag this item.';
+    let out;
+    if (localEnabled()) {
+      // Needs a vision model in LM Studio (e.g. Gemma 3, Qwen2-VL). Text-only models fail here and the app falls back to on-phone tagging.
+      try { out = await localJson({ system, schema: SCHEMA, name: 'clothing_tags', timeoutMs: 50000, messages: [{ role: 'user', content: [
+        { type: 'image_url', image_url: { url: 'data:' + media + ';base64,' + data } }, { type: 'text', text: ask }] }] }); }
+      catch (e) { if (!aiEnabled()) throw e; }
+    }
+    if (!out) out = await askJson({
+      system,
       messages: [{ role: 'user', content: [
         { type: 'image', source: { type: 'base64', media_type: media, data } },
-        { type: 'text', text: hint ? 'The shop calls it: ' + hint + '\nTag this item.' : 'Tag this item.' }
+        { type: 'text', text: ask }
       ] }],
       schema: SCHEMA, maxTokens: 4000, effort: 'low'
     });
     if (!out.found) throw new HttpError(422, 'Couldn’t spot a clothing item in that photo.');
     send(res, 200, {
-      name: String(out.name || '').slice(0, 40), category: out.category, sub: String(out.kind || '').slice(0, 40).toLowerCase(),
-      colours: (out.colours || []).filter(c => COLOURS.indexOf(c) > -1).slice(0, 3), pattern: out.pattern, fit: out.fit,
+      name: String(out.name || '').slice(0, 40), category: ['top', 'layer', 'bottom', 'shoes', 'extra'].indexOf(out.category) > -1 ? out.category : 'top', sub: String(out.kind || '').slice(0, 40).toLowerCase(),
+      colours: (out.colours || []).filter(c => COLOURS.indexOf(c) > -1).slice(0, 3), pattern: ['solid', 'striped', 'graphic', 'print', 'check'].indexOf(out.pattern) > -1 ? out.pattern : 'solid', fit: ['slim', 'regular', 'relaxed', 'oversized'].indexOf(out.fit) > -1 ? out.fit : 'regular',
       warmth: out.warmth, formality: out.dressiness, styles: (out.styles || []).slice(0, 3)
     });
   } catch (e) {

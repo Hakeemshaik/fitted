@@ -1,5 +1,6 @@
 import { send, readJson, HttpError } from './_lib/http.js';
 import { askJson, aiEnabled, checkAccess, MODEL } from './_lib/claude.js';
+import { localEnabled, localStatus, localJson } from './_lib/llm.js';
 
 const SLOTS = ['top', 'layer', 'bottom', 'shoes', 'extra'];
 const str = (v, n) => String(v == null ? '' : v).slice(0, n);
@@ -48,7 +49,14 @@ Rules:
 /** GET /api/stylist -> { ai }  ·  POST /api/stylist -> { reply, outfits, quick } */
 export default async function handler(req, res) {
   try {
-    if (req.method === 'GET') return send(res, 200, { ai: aiEnabled(), model: aiEnabled() ? MODEL : null, locked: !!process.env.FITTED_ACCESS_CODE });
+    if (req.method === 'GET') {
+      const locked = !!process.env.FITTED_ACCESS_CODE;
+      if (localEnabled()) {
+        const st = await localStatus();
+        if (st.online || !aiEnabled()) return send(res, 200, { ai: st.online, provider: 'local', model: st.model || null, reason: st.online ? null : st.detail, locked });
+      }
+      return send(res, 200, { ai: aiEnabled(), provider: aiEnabled() ? 'claude' : null, model: aiEnabled() ? MODEL : null, locked });
+    }
     if (req.method !== 'POST') throw new HttpError(405, 'Use POST');
     checkAccess(req);
     const body = await readJson(req);
@@ -74,7 +82,14 @@ export default async function handler(req, res) {
       { type: 'text', text: 'Context for this question (JSON):\n' + JSON.stringify(context) },
       { type: 'text', text: last.content }
     ] }]);
-    const out = await askJson({ system: SYSTEM, messages, schema: SCHEMA, maxTokens: 8000, effort: 'low' });
+    let out;
+    if (localEnabled()) {
+      // Local models get plain-string turns (OpenAI format).
+      const local = history.concat([{ role: 'user', content: 'Context for this question (JSON):\n' + JSON.stringify(context) + '\n\nQuestion: ' + last.content }]);
+      try { out = await localJson({ system: SYSTEM, messages: local, schema: SCHEMA, name: 'stylist_reply' }); }
+      catch (e) { if (!aiEnabled()) throw e; }
+    }
+    if (!out) out = await askJson({ system: SYSTEM, messages, schema: SCHEMA, maxTokens: 8000, effort: 'low' });
     const ids = {}; closet.forEach(i => { ids[i.id] = i.category; });
     const outfits = (out.outfits || []).slice(0, 3).map(o => {
       const items = {};
