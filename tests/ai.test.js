@@ -31,11 +31,12 @@ test('stylist sends a structured request and drops invented ids', async () => {
   setClient({ beta: { messages: { create: async p => { sent = p; return { stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({
     reply: 'Go matchday.', quick: ['Swap the shoes'],
     outfits: [
-      { name: 'Matchday', why: 'Red pops.', top: 'm1', layer: '', bottom: 'j1', shoes: 's1', extra: '' },
-      { name: 'Fake', why: 'x', top: 'nope', layer: '', bottom: 'j1', shoes: 's1', extra: '' },
-      { name: 'Wrong slot', why: 'x', top: 'j1', layer: '', bottom: 'm1', shoes: 's1', extra: '' }
+      { pick: 'c1', name: 'Matchday', why: 'Red pops.' },
+      { pick: 'c7', name: 'Fake', why: 'x' },
+      { pick: 'c1', name: 'Twice', why: 'x' }
     ] }) }] }; } } } });
-  const r = await call(stylist, 'POST', { closet, messages: [{ role: 'assistant', text: 'hi' }, { role: 'user', text: 'What should I wear?' }], weather: [{ date: '2026-09-23', max: 22 }] });
+  const candidates = [{ items: { top: 'm1', bottom: 'j1', shoes: 's1' }, look: 'Red pop' }, { items: { top: 'j1', bottom: 'm1', shoes: 's1' } }, { items: { top: 'nope', bottom: 'j1', shoes: 's1' } }];
+  const r = await call(stylist, 'POST', { closet, candidates, need: 3, messages: [{ role: 'assistant', text: 'hi' }, { role: 'user', text: 'What should I wear?' }], weather: [{ day: 'Today', max: 22, min: 12, conditions: 'Sunny' }] });
   assert.equal(r.status, 200);
   assert.equal(r.body.reply, 'Go matchday.');
   assert.equal(r.body.outfits.length, 1);
@@ -46,6 +47,7 @@ test('stylist sends a structured request and drops invented ids', async () => {
   assert.equal(sent.output_config.format.type, 'json_schema');
   assert.equal(sent.messages[0].role, 'user');
   assert.match(sent.messages[0].content[0].text, /Milan jersey/);
+  assert.deepEqual(sent.output_config.format.schema.properties.outfits.items.properties.pick.enum, ['c1'], 'only valid candidates reach the model');
 });
 
 test('refusal is surfaced as a friendly error', async () => {

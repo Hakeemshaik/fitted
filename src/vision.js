@@ -217,6 +217,49 @@ function keepMain(mask, w, h) {
   for (let p = 0; p < w * h; p++) if (!zone[p]) mask[p] = 0;
   return comps;
 }
+/* Box mean over a (2r+1)² window, via an integral image. */
+function boxMean(src, w, h, r) {
+  const W = w + 1, I = new Float64Array(W * (h + 1)), out = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += src[y * w + x]; I[(y + 1) * W + x + 1] = I[y * W + x + 1] + row; } }
+  for (let y = 0; y < h; y++) {
+    const y0 = Math.max(0, y - r), y1 = Math.min(h - 1, y + r);
+    for (let x = 0; x < w; x++) {
+      const x0 = Math.max(0, x - r), x1 = Math.min(w - 1, x + r);
+      out[y * w + x] = (I[(y1 + 1) * W + x1 + 1] - I[y0 * W + x1 + 1] - I[(y1 + 1) * W + x0] + I[y0 * W + x0]) / ((x1 - x0 + 1) * (y1 - y0 + 1));
+    }
+  }
+  return out;
+}
+/**
+ * Snap the soft, low-res AI mask to the photo's real edges (guided filter, He et al.), so the
+ * outline hugs the fabric instead of a blurry halo of background.
+ */
+export function refineMask(cv, mask) {
+  const w = cv.width, h = cv.height, n = w * h, d = ctx2d(cv).getImageData(0, 0, w, h).data;
+  const I = new Float32Array(n); for (let i = 0; i < n; i++) I[i] = (d[i * 4] * 0.299 + d[i * 4 + 1] * 0.587 + d[i * 4 + 2] * 0.114) / 255;
+  const r = Math.max(3, Math.round(Math.max(w, h) / 160)), eps = 2e-3;
+  const II = new Float32Array(n), Ip = new Float32Array(n);
+  for (let i = 0; i < n; i++) { II[i] = I[i] * I[i]; Ip[i] = I[i] * mask[i]; }
+  const mI = boxMean(I, w, h, r), mp = boxMean(mask, w, h, r), mII = boxMean(II, w, h, r), mIp = boxMean(Ip, w, h, r);
+  const A = new Float32Array(n), B = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const v = mII[i] - mI[i] * mI[i], c = mIp[i] - mI[i] * mp[i]; A[i] = c / (v + eps); B[i] = mp[i] - A[i] * mI[i]; }
+  const mA = boxMean(A, w, h, r), mB = boxMean(B, w, h, r);
+  for (let i = 0; i < n; i++) {
+    const q = mA[i] * I[i] + mB[i];
+    // only let the filter move the edge band; keep solid inside and outside as the model had them
+    if (mask[i] > 0.02 && mask[i] < 0.98) mask[i] = Math.max(0, Math.min(1, q));
+  }
+}
+/** Fill small see-through specks inside the piece (the model hesitating on a logo or crease). */
+export function fillHoles(mask, w, h) {
+  const bg = new Uint8Array(w * h); let area = 0;
+  for (let i = 0; i < bg.length; i++) { if (mask[i] < 0.5) bg[i] = 1; else area++; }
+  const { lab, sizes } = label(bg, w, h), edge = new Uint8Array(sizes.length);
+  for (let x = 0; x < w; x++) { edge[lab[x]] = 1; edge[lab[(h - 1) * w + x]] = 1; }
+  for (let y = 0; y < h; y++) { edge[lab[y * w]] = 1; edge[lab[y * w + w - 1]] = 1; }
+  const small = sizes.map((s, i) => i && !edge[i] && s < area * 0.012);
+  for (let i = 0; i < bg.length; i++) if (small[lab[i]]) mask[i] = 1;
+}
 function applyMask(cv, mask) {
   const w = cv.width, h = cv.height, out = mk(w, h), oc = ctx2d(out);
   oc.drawImage(cv, 0, 0);
@@ -447,6 +490,7 @@ export async function processPhoto(src, opt = {}) {
     if (mask) {
       dropBlocks(mask, base);
       comps = keepMain(mask, base.width, base.height);
+      if (method === 'ai') { refineMask(base, mask); fillHoles(mask, base.width, base.height); }
       const cover = mask.reduce((s, v) => s + (v > 0.5 ? 1 : 0), 0) / mask.length;
       if (cover > 0.02 && cover < 0.97) cv = applyMask(base, mask);
     }

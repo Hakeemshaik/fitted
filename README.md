@@ -3,12 +3,13 @@
 A closet stylist for iPhone that you add to your Home Screen. Snap your clothes or paste shop links, and Fitted builds outfits around the weather, your colours and your fit.
 
 ## What it does
-- **Today's fit**: an outfit for today's weather and plan (Casual, Work, Date, Braai, Gym). Swipe right to save it, left to skip, or tap a piece to swap it.
+- **Today's fit**: outfits for today's weather and plan (Casual, Work, Date, Braai, Gym). Swipe right to save, left for the next look, or tap a piece to swap it. Each card is a different look, and the last card tells you honestly when there are no more good ones.
+- **Photo tips**: in the add sheet (and Settings) a short illustrated guide shows how to photograph clothes for the cleanest cut-outs.
 - **Colour and fit aware**: every outfit is scored on colour harmony (neutral base, one accent, echoed colours, no clashes or pattern fights) and on silhouette (loose over neat, no baggy on baggy for smart plans). The card shows the palette and fit so you can see why it works.
 - **Try before you buy**: paste a link from an online shop. Fitted pulls in the photo, name and price, adds the item to your wishlist and shows how many fits it makes with clothes you already own.
 - **Add lots of photos at once**: pick as many as you like from your gallery (up to 40 per round). Each photo is handled on the phone: the background is removed (U²-Net), an image classifier (EfficientNet-Lite4) works out what the piece is (tee, sweater, jacket, jeans, shorts, skirt, sneakers, boots, bag, cap…), sideways and tilted photos are turned upright, bold stripes are spotted, and colours are read. Screenshots of shop or marketplace listings work too: Fitted keeps only the product photo and drops the app, text and price cards around it. Check everything in one grid, tap any piece to fix it, then add them all. With the AI stylist on, it also names each piece (from the listing title for screenshots).
 - **Build**: put a fit together yourself, let Fitted complete the empty slots, and get a fit check out of 10 (colour, fit, weather).
-- **Stylist chat**: swipe up on the bottom bar (or tap its handle). Ask what to wear, what goes with an item, whether a wishlist piece is worth buying, or plan your week.
+- **Stylist chat**: swipe up on the bottom bar (or tap its handle). Ask “what should I wear?” and it asks one or two quick tap-to-answer questions (what’s the plan, shorts or long pants) unless the weather or occasion already decides, then shows three different looks. “Show me 3 more” never repeats a look, and when it runs out it says so and tells you which piece would unlock more. Tap the mic to just talk; it answers out loud. It also pairs pieces, plans colours and tells you if a wishlist piece is worth buying.
 - **Fits**: saved outfits and a weekly log of what you wore.
 
 ## Security
@@ -27,7 +28,7 @@ Shop-link import runs on Vercel functions (`api/`), so it works on the deployed 
 ## Use the AI on your PC (LM Studio + ngrok)
 The stylist chat and photo tagging can run on a model on your own PC. When the PC is off, Fitted quietly falls back to its built-in rules.
 
-1. **LM Studio:** load a model (a small instruct model such as Llama 3.2 3B or Qwen 2.5 3B is fast enough; use a vision model such as Gemma 3 or Qwen2-VL if you want photo tagging). Open the **Developer** tab and start the server (port 1234). Copy the model's **API Model Identifier**.
+1. **LM Studio:** load a model. A vision model is best (**Qwen3-VL 8B** is ideal; Gemma 3 works too): it runs the chat and also names your photos and reads shop screenshots. Open the **Developer** tab and start the server (port 1234).
 2. **ngrok:** make a free account, claim your free static domain (Domains page), then run
    `ngrok http 1234 --url=<name>.ngrok-free.dev`
    The screen must show `-> http://localhost:1234`.
@@ -35,10 +36,12 @@ The stylist chat and photo tagging can run on a model on your own PC. When the P
    | Name | Value |
    |---|---|
    | `LLM_BASE_URL` | `https://<name>.ngrok-free.dev/v1` |
-   | `LLM_MODEL` | the API Model Identifier from LM Studio |
+   | `LLM_MODEL` | optional. Leave it out and Fitted uses whichever model LM Studio has loaded (vision models first), so switching models needs no change here |
    | `LLM_API_KEY` | `lm-studio` (unless you turned on LM Studio auth) |
    | `LLM_MERGE_SYSTEM` | `1` only for models without a system role (e.g. Mistral 7B Instruct v0.2) |
 4. **Test from your phone:** open `https://<name>.ngrok-free.dev/v1/models`. A list of models means the tunnel works. The chat header shows **Local AI · <model>** when it's connected.
+
+How the AI is used: Fitted's style engine builds the candidate outfits (colour harmony, fit balance, weather, no repeats) and the model picks the best ones for what you asked, names them and explains them. That keeps a small local model fast and stops it inventing clothes you don't own.
 
 Keep the ngrok URL private: anyone with it can use your PC's model. The app calls it from the server, so it never reaches the phone. Optional: set `FITTED_ACCESS_CODE` to a password and enter it in **Settings → Stylist AI**, so only your phone can use the AI through your Fitted link.
 

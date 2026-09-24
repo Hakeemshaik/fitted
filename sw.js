@@ -1,4 +1,4 @@
-const CACHE = 'fitted-v6';
+const CACHE = 'fitted-v7';
 const SHELL = ['./', 'index.html', 'app.css', 'src/main.js', 'src/engine.js', 'src/db.js', 'src/vision.js', 'src/art.js', 'manifest.webmanifest',
   'icons/apple-touch-icon.png', 'icons/icon-192.png', 'img/milan.webp', 'img/germany.webp', 'img/jorts.webp', 'img/black.webp', 'img/shox.webp'];
 // App code is fetched network-first so a redeploy shows up on the next launch; everything else is cache-first.

@@ -452,3 +452,22 @@ em.it{font-family:var(--serif);font-style:italic;color:var(--accent);font-weight
 .art.tag .sw{transform-origin:110px 60px;animation:swing 3s ease-in-out infinite}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important}.sheet,.chat,.chatdim,.toast,.barhint,.seg::before,.bar{transition-duration:.01s!important}}
 @media (max-width:360px){:root{--gut:16px}.title h1{font-size:42px}.seg button{font-size:12px}.tagcard .acts{gap:10px}.tagcard .acts .btn{min-width:118px}}
+
+/* ---------- photo tips ---------- */
+.tipsrow{display:flex;align-items:center;gap:12px;width:100%;margin-top:14px;padding:10px 14px 10px 10px;border-radius:20px;border:1.5px dashed var(--paper-3);background:transparent;text-align:left;color:var(--ink)}
+.tipsrow .tipart{width:62px;height:46px;flex:none;color:var(--ink)}
+.tipsrow span{flex:1;min-width:0}.tipsrow b{display:block;font-size:14.5px}.tipsrow small{color:var(--muted);font-size:12.5px;font-weight:550}
+.tips{display:grid;gap:10px;margin-top:6px}
+.tip{display:grid;grid-template-columns:96px 1fr;gap:14px;align-items:center;padding:12px;border-radius:22px;background:var(--card);box-shadow:0 1px 0 var(--line);animation:up .5s var(--out) both;animation-delay:calc(var(--i) * 60ms)}
+.tip .tipart{width:96px;height:72px;color:var(--ink)}
+.tip b{display:block;font-size:15px;line-height:1.25;margin-bottom:3px}.tip small{display:block;color:var(--muted);font-size:13px;line-height:1.45;font-weight:500}
+.tipbar{display:flex;align-items:center;gap:8px;width:100%;margin:0 0 12px;padding:10px 14px;border:0;border-radius:16px;background:var(--accent-soft);color:var(--accent-2);font-size:13px;font-weight:600;text-align:left}
+.tipbar b{text-decoration:underline;text-underline-offset:2px}
+/* ---------- chat: numbered looks, spoken questions, voice panel ---------- */
+.fitc{position:relative}
+.lookno{position:absolute;top:18px;left:18px;z-index:2;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:var(--ink);color:var(--paper);padding:4px 9px;border-radius:999px}
+.msg.me.said div::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:8px;vertical-align:1px}
+.voice .acts2{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;max-width:300px;margin-top:6px}
+.voice small{max-width:280px;text-align:center}
+.deckend{text-align:center}
+.deckend .acts2{margin-top:14px}

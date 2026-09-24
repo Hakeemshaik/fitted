@@ -1,10 +1,10 @@
 import {
   CATS, CATLABEL, ONE, VIBES, STYLES, PATTERNS, FITS, COLOURS, NEUTRAL, WMO, cond, cap, nm, iso, daysAgo, today0,
-  normItem, createEngine, guessFromText, pairsWith
+  normItem, createEngine, guessFromText, pairsWith, isShort
 } from './engine.js';
 import { store, imgs, blobToDataUrl, dataUrlToBlob } from './db.js';
 import { processPhoto, forTagging, rotateBlob, warmUp, autoName, modelsReady } from './vision.js';
-import { LOGO, RAIL, TAG, CHALK, SWIPE, tee } from './art.js';
+import { LOGO, RAIL, TAG, CHALK, SWIPE, TIPS, tee } from './art.js';
 
 /* ---------- helpers ---------- */
 const $ = (s, r) => (r || document).querySelector(s);
@@ -126,7 +126,7 @@ let aiChecked = 0;
 function checkAI() {
   aiChecked = Date.now();
   fetch('/api/stylist', { headers: { accept: 'application/json' } }).then(r => (r.ok ? r.json() : null)).then(j => {
-    S.ai = { on: !!(j && j.ai), locked: !!(j && j.locked), provider: j && j.provider, model: j && j.model, reason: j && j.reason };
+    S.ai = { on: !!(j && j.ai), locked: !!(j && j.locked), provider: j && j.provider, model: j && j.model, reason: j && j.reason, vision: !!(j && j.vision) };
     const local = S.ai.provider === 'local';
     $('#aistatus').innerHTML = '<i class="' + (S.ai.on ? 'on' : '') + '"></i>' + esc(S.ai.on ? (local ? 'Local AI' + (S.ai.model ? ' · ' + S.ai.model : '') : 'AI stylist · knows your closet') : local ? 'PC offline · using style rules' : 'Style rules');
   }).catch(() => {});
@@ -135,8 +135,9 @@ const aiHeaders = () => ({ 'content-type': 'application/json', 'x-fitted-code': 
 
 /* ---------- outfit helpers ---------- */
 function refresh() {
-  S.today = E.candidates({ weather: wxFor(0), vibe: S.vibe });
-  if (S.todayIdx >= S.today.length) S.todayIdx = 0;
+  S.today = E.candidates({ weather: wxFor(0), vibe: S.vibe, goodOnly: true, byLook: true });
+  if (!S.today.length) S.today = E.candidates({ weather: wxFor(0), vibe: S.vibe, limit: 3 });
+  if (S.todayIdx > S.today.length) S.todayIdx = 0;
 }
 function plate(ids, cls) {
   const p = E.resolve(ids || {});
@@ -234,8 +235,9 @@ function rHome() {
   if (!S.set.hintOff && !isStandalone()) h += '<div class="hint">' + ic('share', 22) + '<div><b>Install Fitted</b>Tap Share in Safari, then Add to Home Screen.</div><button class="x" data-act="hintoff" aria-label="Dismiss">' + ic('x', 18) + '</button></div>';
   if (!owned().length) return h + emptyCloset();
   h += seg('vibe', VIBES.map(v => [v, v === 'Date night' ? 'Date' : v]), S.vibe, 'data-act="vibe"');
-  const c = S.today[S.todayIdx], n = S.today[(S.todayIdx + 1) % Math.max(1, S.today.length)];
-  if (c) {
+  const c = S.today[S.todayIdx], n = S.today[S.todayIdx + 1];
+  if (!c && S.today.length) h += deckEnd();
+  else if (c) {
     const key = S.vibe + E.comboKey(c.items), drop = key !== S.lastCard; S.lastCard = key;
     h += '<div class="stack" id="stack">' + (n && n !== c ? tagCard(n, { cls: 'back' }) : '') + tagCard(c, { acts: true, stamps: true, id: 'topcard', drop }) + '</div>';
     h += '<p class="helper"><span>' + ic('heart', 12) + 'Swipe right to save</span><span>' + ic('x', 12) + 'left for next</span><span>Tap a piece to swap</span></p>';
@@ -247,6 +249,14 @@ function rHome() {
   const old = owned().filter(i => E.lastWornDays(i.id) >= 30);
   if (old.length) h += '<div class="sec"><h2>Give these some <em>love</em></h2><button data-act="style-these">Style one' + ic('chev', 14) + '</button></div><div class="hscroll">' + old.map(itemCard).join('') + '</div>';
   return h;
+}
+const SLOTWORD = { top: 'top', bottom: 'pair of bottoms', shoes: 'pair of shoes' };
+/** The end of Today's deck: say honestly that these were all the good looks, and what would unlock more. */
+function deckEnd() {
+  const n = S.today.length, need = E.shortOf();
+  return '<div class="card empty deckend">' + CHALK + '<b>That’s all ' + n + ' for ' + (S.vibe === 'Date night' ? 'date night' : S.vibe.toLowerCase()) + '</b>' +
+    '<p>Those are the only fits I’d stand behind from your closet for today’s weather. One more ' + SLOTWORD[need] + ' would give me new combinations.</p>' +
+    '<div class="acts2"><button class="btn ghost" data-act="deck-again">' + ic('rotate', 18) + 'See them again</button><button class="btn accent" data-act="add">' + ic('plus', 18) + 'Add a ' + (need === 'top' ? 'top' : need === 'shoes' ? 'pair' : 'bottom') + '</button></div></div>';
 }
 function wishCard(it) {
   const cp = E.compat(it.id, wxFor(0)), best = cp && cp.best[0];
@@ -453,8 +463,8 @@ function bindLocation(sh) {
 function settingsSheet() {
   const pr = S.profile;
   const colourChips = key => '<div class="chips">' + Object.keys(COLOURS).map(c => '<button class="pill' + (pr[key].indexOf(c) > -1 ? ' on' : '') + '" data-pc="' + key + '" data-v="' + c + '"><i style="background:' + COLOURS[c] + '"></i>' + cap(c) + '</button>').join('') + '</div>';
-  const aiText = S.ai.on ? (S.ai.provider === 'local' ? 'On. Using the model on your PC' + (S.ai.model ? ' (' + S.ai.model + ')' : '') + ' through ngrok.' : 'On. The stylist chat and photo tagging use Claude.')
-    : S.ai.provider === 'local' ? 'Your PC’s AI is offline: ' + (S.ai.reason || 'no answer') + ' Fitted uses its built-in rules until it’s back.' : 'Off. Fitted is styling with its built-in rules. Set LLM_BASE_URL and LLM_MODEL in Vercel to use the AI on your PC.';
+  const aiText = S.ai.on ? (S.ai.provider === 'local' ? 'On. Using ' + (S.ai.model || 'the model') + ' on your PC through ngrok' + (S.ai.vision ? ', including photo naming and reading screenshots.' : '. Load a vision model (e.g. Qwen3-VL) to also name photos.') : 'On. The stylist chat and photo tagging use Claude.')
+    : S.ai.provider === 'local' ? 'Your PC’s AI is offline: ' + (S.ai.reason || 'no answer') + ' Fitted uses its built-in rules until it’s back.' : 'Off. Fitted is styling with its built-in rules. Set LLM_BASE_URL in Vercel to use the AI on your PC; it uses whichever model LM Studio has loaded.';
   const h = '<h4 class="group">My style</h4>' +
     '<div class="field"><label>Preferred fit</label><div class="fitpick">' + FITS.map(f => '<button class="' + (pr.fit === f ? 'on' : '') + '" data-pf="' + f + '">' + tee(f) + cap(f) + '</button>').join('') + '</div></div>' +
     '<div class="field"><label>Colours I love</label>' + colourChips('love') + '</div>' +
@@ -464,7 +474,8 @@ function settingsSheet() {
     (S.ai.locked ? '<div class="field"><label for="acode">Access code</label><input type="text" id="acode" value="' + esc(S.set.code) + '" placeholder="The FITTED_ACCESS_CODE you set on Vercel" autocomplete="off" maxlength="80"></div>' : '') +
     '<h4 class="group">Your data</h4><p class="muted small">Your closet lives on this phone. Back it up before deleting the app.</p>' +
     '<div class="acts2"><button class="btn ghost" data-s="export">' + ic('dl', 18) + 'Back up</button><label class="btn ghost filebtn">' + ic('ul', 18) + 'Restore<input type="file" accept="application/json,.json" id="importf"></label></div>' +
-    '<button class="btn soft block" style="margin-top:12px" data-s="tour">Show the intro again</button>' +
+    '<button class="btn soft block" style="margin-top:12px" data-s="tips">' + ic('camera', 18) + 'Photo tips</button>' +
+    '<button class="btn soft block" style="margin-top:10px" data-s="tour">Show the intro again</button>' +
     '<button class="btn soft danger block" style="margin-top:10px" data-s="reset">Reset to the demo closet</button>';
   openSheet('Settings', h, sh => {
     bindLocation(sh);
@@ -479,6 +490,7 @@ function settingsSheet() {
         pc.classList.toggle('on', arr.indexOf(v) > -1); persist(); refresh(); render();
       }
       if (s && s.dataset.s === 'export') exportBackup();
+      if (s && s.dataset.s === 'tips') tipsSheet(settingsSheet);
       if (s && s.dataset.s === 'tour') { closeSheet(); S.seen = false; onboarding(); }
       if (s && s.dataset.s === 'reset') {
         if (!s.dataset.sure) { s.dataset.sure = '1'; s.textContent = 'Tap again to erase everything'; return; }
@@ -528,11 +540,21 @@ function addSheet() {
     '<label class="addrow hero"><span class="dot">' + ic('photos') + '</span><span><b>Choose photos</b><small>Pick as many as you like. Fitted cuts each one out and names it.</small></span>' + ic('chev', 18) + '<input type="file" accept="image/*" multiple id="flib"></label>' +
     '<label class="addrow"><span class="dot paper">' + ic('camera') + '</span><span><b>Take a photo</b><small>One item, laid flat or hung up</small></span>' + ic('chev', 18) + '<input type="file" accept="image/*" capture="environment" id="fcam"></label>' +
     '<button class="addrow" data-a="link"><span class="dot paper">' + ic('link') + '</span><span><b>Paste a shop link</b><small>Try it with your closet before you buy</small></span>' + ic('chev', 18) + '</button>' +
+    '<button class="tipsrow" data-a="tips">' + TIPS[0][1] + '<span><b>How to take a great photo</b><small>Six quick tips for clean cut-outs</small></span>' + ic('chev', 18) + '</button>' +
     '<p class="muted small center" style="margin-top:16px">Backgrounds are removed on your phone. Your photos never leave it' + (S.ai.on ? ' except to your stylist AI for naming.' : '.') + '</p>', sh => {
     const h = e => { const fs = Array.prototype.slice.call(e.target.files || []).filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|heic|heif|webp)$/i.test(f.name)); if (fs.length) startBatch(fs); };
     $('#fcam', sh).onchange = h; $('#flib', sh).onchange = h;
-    sh.onclick = e => { if (e.target.closest('[data-a="link"]')) linkSheet(); };
+    sh.onclick = e => { if (e.target.closest('[data-a="link"]')) linkSheet(); if (e.target.closest('[data-a="tips"]')) tipsSheet(addSheet); };
   });
+}
+/** How to photograph clothes so the cut-out, naming and colours come out right. */
+function tipsSheet(back) {
+  openSheet('Photo tips', '<p class="lead">Fitted cuts out and names each piece on your phone. These make it spot on.</p>' +
+    '<div class="tips">' + TIPS.map((t, i) => '<div class="tip" style="--i:' + i + '">' + t[1] + '<div><b>' + t[2] + '</b><small>' + t[3] + '</small></div></div>').join('') + '</div>' +
+    '<button class="btn accent block" data-t="go" style="margin-top:18px">' + ic('photos', 18) + 'Add photos</button>', sh => {
+    sh.onclick = e => { if (e.target.closest('[data-t="go"]')) addSheet(); };
+  }, { tall: true, back: back || null });
+  S.set.tipsSeen = true; persist();
 }
 function linkSheet(prefill, err) {
   openSheet('Add from a shop',
@@ -620,7 +642,8 @@ function drawBatch(first, changed) {
     '<div class="ph">' + (x.status === 'done' ? '<img src="' + esc(dUrl(x)) + '" alt="">' : x.status === 'work' ? '<img src="' + esc(x.thumb) + '" alt="">' : '<span class="ph0"></span>') + '</div>' +
     (x.status === 'done' ? '<button class="r" data-rot="' + x.id + '" aria-label="Rotate">' + ic('rotate', 15) + '</button>' : '') + '<button class="x" data-rm="' + x.id + '" aria-label="Remove">' + ic('x', 14) + '</button>' +
     '<b>' + esc(x.t ? x.t.name : x.status === 'err' ? 'Couldn’t read this one' : x.status === 'work' ? 'Cutting out…' : 'Waiting…') + '</b><small' + (x.t && x.conf < 0.45 && x.ai !== 'done' && !x.touched.category ? ' class="warn"' : '') + '>' + esc(x.t ? ONE[x.t.category] + (x.ai === 'work' ? ' · naming…' : x.conf < 0.45 && x.ai !== 'done' && !x.touched.category ? ' · check type' : '') : ' ') + '</small></div>').join('');
-  const body = '<div class="bhead"><b>' + ready + ' of ' + total + ' ready</b><small>' + (working ? (modelsReady() ? 'Cutting out backgrounds…' : 'Setting up the on-phone AI · first time only') : 'Tap one to check it') + '</small></div><div class="prog"><i style="width:' + Math.round(100 * B.drafts.filter(x => x.status === 'done' || x.status === 'err').length / Math.max(1, total)) + '%"></i></div><div class="bgrid">' + tiles + '</div>';
+  const tricky = B.drafts.some(x => x.status === 'err' || (x.status === 'done' && (x.method !== 'ai' || x.conf < 0.45)));
+  const body = (tricky && !working ? '<button class="tipbar" data-tips="1">' + ic('sparkle', 16) + '<span>Some photos were tricky. <b>See photo tips</b></span></button>' : '') + '<div class="bhead"><b>' + ready + ' of ' + total + ' ready</b><small>' + (working ? (modelsReady() ? 'Cutting out backgrounds…' : 'Setting up the on-phone AI · first time only') : 'Tap one to check it') + '</small></div><div class="prog"><i style="width:' + Math.round(100 * B.drafts.filter(x => x.status === 'done' || x.status === 'err').length / Math.max(1, total)) + '%"></i></div><div class="bgrid">' + tiles + '</div>';
   const foot = '<button class="btn accent block" data-save="1"' + (ready ? '' : ' disabled') + '>' + ic('check', 18) + (working ? 'Add ' + ready + ' now · ' + (total - ready) + ' still working' : 'Add ' + ready + ' to your closet') + '</button>';
   const sc = $('.sheet .sc');
   if (!first && sc && $('.bgrid', sc)) { sc.classList.add('still'); const y = sc.scrollTop; sc.innerHTML = body; sc.scrollTop = y; $('.sheet .ft').innerHTML = foot; return; }
@@ -633,6 +656,7 @@ function bindBatch(sh) {
     if (!B) return;
     const rm = e.target.closest('[data-rm]'), rot = e.target.closest('[data-rot]'), t = e.target.closest('[data-d]');
     if (e.target.closest('[data-save]')) return saveBatch();
+    if (e.target.closest('[data-tips]')) { onSheetClose = null; tipsSheet(() => drawBatch(true)); onSheetClose = cleanupBatch; return; }
     if (rm) { const gone = B.drafts.filter(x => x.id === rm.dataset.rm)[0]; if (gone) { URL.revokeObjectURL(gone.thumb); resetUrl(gone); } B.drafts = B.drafts.filter(x => x.id !== rm.dataset.rm); if (!B.drafts.length) return closeSheet(); return drawBatch(); }
     if (rot) return rotateDraft(B.drafts.filter(x => x.id === rot.dataset.rot)[0], 90);
     if (t) { const d = B.drafts.filter(x => x.id === t.dataset.d)[0]; if (d && d.status === 'done') { B.view = d.id; drawBatch(true); } }
@@ -671,7 +695,7 @@ async function runAiQueue() {
       const d = aiQueue.shift();
       if (!B || B.drafts.indexOf(d) < 0) continue;
       try {
-        const image = d.context ? await forTagging(d.context, 1280) : await forTagging(d.cut || d.orig);
+        const image = d.context ? await forTagging(d.context, 1100) : await forTagging(d.cut || d.orig);
         const r = await fetch('/api/tag', { method: 'POST', headers: aiHeaders(), body: JSON.stringify({ image, hint: B.meta.name || '', screenshot: !!d.context }) });
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(j.error || 'failed');
@@ -841,6 +865,7 @@ document.addEventListener('click', e => {
   if (a === 'style-these') { const old = owned().filter(i => E.lastWornDays(i.id) >= 30)[0]; openChat(); setTimeout(() => ask('Build a fit with my ' + (old ? old.name : 'closet')), 450); return; }
   if (a === 'vibe') { if (S.vibe === b.dataset.v) return; S.vibe = b.dataset.v; S.todayIdx = 0; refresh(); return render(); }
   if (a === 'today-skip') return flyCard(-1);
+  if (a === 'deck-again') { S.todayIdx = 0; S.lastCard = null; return render(); }
   if (a === 'today-save') { burst(b); return flyCard(1); }
   if (a === 'today-wear' && tc) { logWorn(tc.items); return render(); }
   if (a === 'wear-today') return wearSheet();
@@ -863,7 +888,7 @@ function flyCard(dir) {
   card.style.transition = 'transform .45s cubic-bezier(.3,.6,.4,1), opacity .4s';
   card.style.transform = 'translateX(' + dir * 540 + 'px) rotate(' + dir * 18 + 'deg)'; card.style.opacity = '0';
   if (dir > 0) saveOutfit(c); else skipFeedback(c);
-  setTimeout(() => { S.todayIdx = (S.todayIdx + 1) % Math.max(1, S.today.length); if (dir < 0 && S.todayIdx === 0) refresh(); render(); }, 300);
+  setTimeout(() => { S.todayIdx = Math.min(S.todayIdx + 1, S.today.length); render(); }, 300);
 }
 document.addEventListener('pointerdown', e => {
   const card = e.target.closest('#topcard'); if (!card || e.target.closest('button')) return;
@@ -980,17 +1005,18 @@ dim.addEventListener('click', () => closeChat());
   ch.addEventListener('pointerup', end); ch.addEventListener('pointercancel', end);
 })();
 
-const CH = { hist: [], current: null, busy: false, cards: {} };
-function chatReset() { cbody.innerHTML = ''; CH.current = null; CH.hist = []; CH.cards = {}; if (chatOpen) hello(); }
+const CH = { hist: [], current: null, busy: false, cards: {}, plan: null, last: null, shown: {}, voice: false };
+function chatReset() { cbody.innerHTML = ''; CH.current = null; CH.hist = []; CH.cards = {}; CH.plan = null; CH.last = null; CH.shown = {}; CH.names = {}; if (chatOpen) hello(); }
 const nextSatOffset = () => (6 - new Date().getDay() + 7) % 7;
 function hello() {
   const least = owned().slice().sort((a, b) => E.lastWornDays(b.id) - E.lastWornDays(a.id))[0], wl = wishes()[0], sat = nextSatOffset();
-  const sugs = [['sparkle', 'What should I wear today?', wxFor(0).max + '° and ' + cond(wxFor(0)).toLowerCase(), 'What should I wear today?']];
+  const sugs = [['sparkle', 'What should I wear today?', wxFor(0).max + '° and ' + cond(wxFor(0)).toLowerCase() + ' · two quick taps, then 3 looks', 'What should I wear today?'],
+    ['sun', 'Tomorrow, I have work', wxFor(1).max + '° and ' + cond(wxFor(1)).toLowerCase(), 'What should I wear tomorrow? I have work']];
   if (least) sugs.push(['palette', 'What goes with my ' + nm(least) + '?', 'Colours and pieces that match', 'What goes with my ' + least.name + '?']);
   if (wl) sugs.push(['bag', 'Should I buy the ' + nm(wl) + '?', 'Checked against your closet', 'Should I buy the ' + wl.name + '?']);
   else sugs.push(['grid', sat === 0 ? 'Braai today' : 'Braai on Saturday', 'Relaxed, weather-ready', 'What should I wear to a braai on Saturday?']);
-  sugs.push(['create', 'Plan my week', 'A fit for every day', 'Plan my week']);
-  cbody.innerHTML = '<div class="hello"><div class="orb"></div><h5>What are we<br><em>wearing?</em></h5><p>I know your ' + owned().length + ' pieces' + (wishes().length ? ', your wishlist' : '') + ' and this week’s weather.</p>' +
+
+  cbody.innerHTML = '<div class="hello"><div class="orb"></div><h5>What are we<br><em>wearing?</em></h5><p>I know your ' + owned().length + ' pieces' + (wishes().length ? ', your wishlist' : '') + ' and this week’s weather. Type, tap or hit the mic and just talk.</p>' +
     sugs.map((s, i) => '<button type="button" class="sug" style="--i:' + i + '" data-q="' + esc(s[3]) + '"><span class="th">' + ic(s[0], 20) + '</span><span><b>' + esc(s[1]) + '</b><small>' + esc(s[2]) + '</small></span><span class="chev">' + ic('chev', 18) + '</span></button>').join('') + '</div>';
 }
 cbody.addEventListener('click', e => {
@@ -1006,7 +1032,8 @@ function parseDay(q) {
   for (let i = 0; i < 7; i++) if (q.indexOf(DAYS[i]) > -1) return (i - new Date().getDay() + 7) % 7;
   return 0;
 }
-const parseVibe = q => (/braai|bbq/.test(q) ? 'Braai' : /work|office|meeting|interview/.test(q) ? 'Work' : /date|dinner|night out|club|party/.test(q) ? 'Date night' : /gym|workout|run\b|training/.test(q) ? 'Gym' : null);
+const parseVibe = q => (/braai|bbq/.test(q) ? 'Braai' : /work|office|meeting|interview/.test(q) ? 'Work' : /date|dinner|night out|club|party/.test(q) ? 'Date night' : /gym|workout|run\b|training/.test(q) ? 'Gym' : /casual|chill|relax|errand|nothing special|hang ?out|mall|normal|day off/.test(q) ? 'Casual' : null);
+const parseLegs = q => (/\b(shorts?|jorts|short pants)\b/.test(q) ? 'short' : /\b(long pants|longs|pants|jeans|trousers|chinos|joggers|trackies|cargos?|long)\b/.test(q) ? 'long' : /you pick|surprise|don.?t mind|whatever|either|any|up to you|you choose/.test(q) ? 'any' : null);
 function parseSlot(q) {
   if (/shoe|sneaker|kicks|runner|boot|shox|trainer/.test(q)) return 'shoes';
   if (/jacket|hoodie|layer|coat/.test(q)) return 'layer';
@@ -1025,12 +1052,14 @@ function route(q) {
   if (/^save|save (this|it|the fit)/.test(q)) return { intent: 'save' };
   const it = mentioned(q);
   if (/buy|worth it|should i get|wishlist|purchase/.test(q)) return { intent: 'wish', item: it && !it.owned ? it : null };
+  if (CH.last && !parseSlot(q) && /\b(more|another|others?|regenerate|again|next|new ones|different ones|different)\b/.test(q)) return { intent: 'more' };
+  if (/different plan|other plan|change (the )?plan/.test(q)) return { intent: 'replan' };
   if (/swap|change|different|another/.test(q)) return { intent: 'swap', slot: parseSlot(q) };
   if (/week/.test(q)) return { intent: 'week' };
   if (it && /colou?r/.test(q)) return { intent: 'colour', item: it };
   if (it && /build|style|fit with|outfit with|wear with my/.test(q)) return { intent: 'build', item: it };
   if (it && /go with|goes with|pair|match/.test(q)) return { intent: 'pair', item: it };
-  if (/wear|outfit|fit\b|fit for|what should|dress|suggest|braai|work|date|gym|today|tomorrow|weekend|party/.test(q)) return { intent: 'suggest', day: parseDay(q), vibe: parseVibe(q) };
+  if (/wear|outfit|fit\b|fit for|what should|dress|suggest|braai|work|date|gym|today|tomorrow|weekend|party|look/.test(q)) return { intent: 'suggest', day: parseDay(q), vibe: parseVibe(q), legs: parseLegs(q) };
   if (it) return { intent: 'pair', item: it };
   return { intent: 'other' };
 }
@@ -1038,7 +1067,7 @@ const dayWord = off => (off === 0 ? 'Today' : off === 1 ? 'Tomorrow' : cap(DAYS[
 function cardHtml(c) {
   const k = uid(); CH.cards[k] = c;
   const wish = c.wish && c.wish.length;
-  return '<div class="fitc">' + plate(c.items, 'drop') + '<div class="cap"><div><b>' + esc(c.name) + '</b><small>' + esc(itemNames(c.items)) + '</small></div>' +
+  return '<div class="fitc">' + (c.n ? '<span class="lookno">Look ' + c.n + '</span>' : '') + plate(c.items, 'drop') + '<div class="cap"><div><b>' + esc(c.name) + '</b><small>' + esc(c.reason || itemNames(c.items)) + '</small></div>' +
     (wish ? '<button type="button" data-openbuild="' + k + '" aria-label="Open in Build">' + ic('create', 20) + '</button>' : '<button type="button" data-savefit="' + k + '" aria-label="Save this fit">' + ic('heart', 20) + '</button>') + '</div>' +
     (c.colour ? '<div class="tags"><span class="tag">' + swatches(c.colour.swatches) + esc(c.colour.label) + '</span>' + (c.shape && c.shape.label ? '<span class="tag">' + esc(c.shape.label) + '</span>' : '') + '</div>' : '') + '</div>';
 }
@@ -1108,44 +1137,147 @@ function respond(q) {
   }
   return { t: 'I can suggest fits for any day or occasion, swap pieces, match colours, plan your week and tell you if a wishlist piece is worth buying.' + (S.ai.on ? '' : ' Open questions work once your PC’s AI is connected (see Settings).'), q: ['What should I wear today?', 'Plan my week'] };
 }
-async function askAI(q) {
+/* ---------- the "what should I wear?" conversation: ask a little, then show three looks ---------- */
+const LEGWORD = { short: 'shorts', long: 'long pants' };
+const VIBE_ASK = ['Work', 'Casual', 'Date night', 'Braai', 'Gym'];
+const dayPhrase = d => (d === 0 ? 'today' : d === 1 ? 'tomorrow' : 'on ' + dayWord(d));
+const vibeWord = v => (v === 'Date night' ? 'date night' : v === 'Braai' ? 'braai' : v.toLowerCase());
+/** The next thing worth asking, or null once the plan is clear. Asks at most two quick questions. */
+function nextAsk(p) {
+  const w = wxFor(p.day);
+  if (!p.vibe) return { key: 'vibe', t: 'What’s the plan ' + dayPhrase(p.day) + '? ' + (p.day ? cap(dayPhrase(p.day)) : 'Today') + ' is ' + w.max + '° and ' + cond(w).toLowerCase() + '.', q: VIBE_ASK };
+  if (!p.legs) {
+    const bottoms = owned().filter(i => i.category === 'bottom'), hasShort = bottoms.some(isShort), hasLong = bottoms.some(i => !isShort(i));
+    if (!hasShort || !hasLong) p.legs = 'any';
+    else if (w.max < 17) { p.legs = 'long'; p.why = 'Only ' + w.max + '°, so long pants. '; }
+    else if (w.max >= 30) { p.legs = 'short'; p.why = w.max + '° is shorts weather. '; }
+    else if (p.vibe === 'Work' || p.vibe === 'Date night') { p.legs = 'long'; p.why = ''; }
+    else if (p.vibe === 'Gym') p.legs = 'any';
+    else return { key: 'legs', t: 'Shorts or long pants? It’ll be ' + w.max + '°' + (w.min <= w.max - 7 ? ', cooling to ' + w.min + '° later' : '') + '.', q: ['Shorts', 'Long pants', 'You pick'] };
+  }
+  return null;
+}
+const lookOf = c => c.colour.label + (c.shape && c.shape.label ? ' · ' + c.shape.label : '');
+function planKey(p) { return [p.day, p.vibe, p.legs].join('|'); }
+function planCands(p) {
+  const w = wxFor(p.day), shown = CH.shown[planKey(p)] = CH.shown[planKey(p)] || {}, legs = p.legs === 'any' ? undefined : p.legs;
+  let cs = E.candidates({ weather: w, vibe: p.vibe, bottoms: legs, goodOnly: true, byLook: true, exclude: shown, limit: 12 }), note = '';
+  if (!cs.length && legs && !Object.keys(shown).length && !owned().some(i => i.category === 'bottom' && (legs === 'short') === isShort(i))) {
+    note = 'No ' + LEGWORD[legs] + ' in your closet yet, so these use what you have. ';
+    p.legs = 'any'; const r2 = planCands(p); r2.note = note; return r2;
+  }
+  return { cs, w, shown, note };
+}
+function exhausted(p, shown) {
+  const n = Object.keys(shown).length, need = E.shortOf(p.legs === 'any' ? undefined : p.legs), other = p.legs === 'short' ? 'long' : p.legs === 'long' ? 'short' : null;
+  const q = []; if (other) q.push('Try ' + LEGWORD[other] + ' instead'); q.push('Different plan', 'Add clothes');
+  return { t: (n ? 'That’s every ' + vibeWord(p.vibe) + ' look I’d stand behind ' + dayPhrase(p.day) + (p.legs !== 'any' ? ' with ' + LEGWORD[p.legs] : '') + ': ' + n + ' in total. ' : 'I can’t make a ' + vibeWord(p.vibe) + ' fit I’d stand behind from your closet yet. ') +
+    'One more ' + SLOTWORD[need] + ' would give me new combinations.', q };
+}
+async function planStep(q) {
+  const p = CH.plan, a = nextAsk(p);
+  if (a) { p.waiting = a.key; await wait(reduce ? 60 : 350); return { t: a.t, q: a.q }; }
+  CH.plan = null; CH.last = { day: p.day, vibe: p.vibe, legs: p.legs, q: p.q };
+  const { cs, w, shown, note } = planCands(p);
+  if (!cs.length) return exhausted(p, shown);
+  let cards = null, reply = '', quick = null, aiNote = '';
+  if (S.ai.on) {
+    try {
+      const ai = await askAI(p.q + (p.more ? ' (show me different looks)' : ''), { cands: cs.slice(0, 8), need: 3, plan: { day: dayWord(p.day), vibe: p.vibe, legs: p.legs === 'any' ? '' : LEGWORD[p.legs] }, day: p.day, vibe: p.vibe });
+      if (ai.cards.length) { cards = ai.cards; reply = ai.t; quick = ai.q; }
+    } catch (e) { aiNote = aiFail(e); }
+  } else await wait(reduce ? 60 : 450);
+  if (!cards) {
+    cards = cs.slice(0, 3);
+    const n = cards.length;
+    reply = (p.why || '') + cap(dayPhrase(p.day)) + ' is ' + w.max + '° and ' + cond(w).toLowerCase() + (w.rain >= 50 ? ' with a ' + w.rain + '% chance of rain' : '') + '. ' +
+      (n === 1 ? 'Here’s a ' : 'Here are ' + n + ' ') + vibeWord(p.vibe) + ' look' + (n === 1 ? '' : 's') + (p.legs && p.legs !== 'any' ? ' with ' + LEGWORD[p.legs] : '') + '.';
+  }
+  cards.forEach((c, i) => { shown[E.lookKey(c.items)] = 1; c.n = cards.length > 1 ? i + 1 : 0; if (!S.ai.on || !c.fromAI) c.reason = c.reason.replace(/\s*Good for [^.]*\.$/, '') || c.reason; uniqueName(c); });
+  CH.current = cards[0];
+  const left = E.candidates({ weather: w, vibe: p.vibe, bottoms: p.legs === 'any' ? undefined : p.legs, goodOnly: true, byLook: true, exclude: shown, limit: 3 }).length;
+  if (!left) reply += ' That’s all ' + Object.keys(shown).length + ' good looks I have for this.';
+  const other = p.legs === 'short' ? 'long' : p.legs === 'long' ? 'short' : null;
+  if (!quick || !quick.length) quick = left ? ['Show me ' + Math.min(3, left) + ' more', 'Swap the shoes', 'Different plan'] : [other ? 'Try ' + LEGWORD[other] + ' instead' : 'Different plan', 'Add clothes'];
+  else if (!left) quick = quick.filter(x => !/more|another|other/i.test(x)).concat(['Different plan']).slice(0, 3);
+  return { t: note + reply, x: cards.map(cardHtml).join(''), q: quick, note: aiNote };
+}
+/** Names stay unique within the chat, so three looks never read as the same one. */
+function uniqueName(c) {
+  const used = CH.names || (CH.names = {});
+  if (used[c.name]) {
+    const p = E.resolve(c.items), a = p.top && p.top.colours[0], b = p.bottom && (p.bottom.colours[0] === 'denim' ? 'denim' : p.bottom.colours[0]);
+    const alt = cap(a || 'easy') + ' on ' + (b || 'neutral');
+    c.name = used[alt] ? alt + ' · ' + (p.shoes ? nm(p.shoes) : 'fresh') : alt;
+  }
+  used[c.name] = 1;
+}
+const aiFail = e => (e.status === 401 ? 'Add your access code in Settings to use the AI stylist.' : S.ai.provider === 'local' ? 'Your PC’s AI didn’t answer (' + (e.message || 'no reply') + '), so these come from my style rules.' : '');
+/** Candidates that help the AI answer non-plan questions (pairing, buying, open questions). */
+function helperCands(r) {
+  if ((r.intent === 'pair' || r.intent === 'build') && r.item) { const lock = {}; lock[r.item.category] = r.item.id; return { cands: E.candidates({ weather: wxFor(0), vibe: 'Casual', lock, goodOnly: true, limit: 6 }), need: r.intent === 'build' ? 1 : 2 }; }
+  if (r.intent === 'wish') { const it = r.item || wishes()[0]; if (it) { const lock = {}; lock[it.category] = it.id; return { cands: E.candidates({ weather: wxFor(0), vibe: 'Casual', lock, withWish: true, goodOnly: true, limit: 6 }), need: 2 }; } }
+  if (r.intent === 'colour') return { cands: [], need: 0 };
+  return { cands: E.candidates({ weather: wxFor(0), vibe: 'Casual', goodOnly: true, limit: 6 }), need: 1 };
+}
+async function askAI(q, o) {
+  o = o || {};
   const closet = S.items.map(i => ({ id: i.id, name: i.name, category: i.category, kind: i.sub, colours: i.colours, pattern: i.pattern, fit: i.fit, warmth: i.warmth, dressiness: i.formality, styles: i.styles, lastWornDays: E.lastWornDays(i.id) === Infinity ? null : E.lastWornDays(i.id), owned: i.owned, price: i.price || null }));
+  const cands = o.cands || [];
   const r = await fetch('/api/stylist', { method: 'POST', headers: aiHeaders(), body: JSON.stringify({
-    messages: CH.hist.concat([{ role: 'user', text: q }]).slice(-12), closet, profile: S.profile,
+    messages: CH.hist.concat([{ role: 'user', text: q }]).slice(-12), closet, profile: S.profile, plan: o.plan || null,
+    candidates: cands.map(c => ({ items: c.items, look: lookOf(c) })), need: o.need || 0,
     today: new Date().toLocaleDateString('en-ZA', { weekday: 'long', day: 'numeric', month: 'long' }),
     weather: S.forecast.map((w, i) => ({ day: dayWord(i), max: w.max, min: w.min, conditions: cond(w), rainChance: w.rain }))
   }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error(j.error || 'The stylist is unavailable'); e.status = r.status; throw e; }
-  const day = parseDay(q.toLowerCase()), vibe = parseVibe(q.toLowerCase()) || 'Casual';
-  const cards = (j.outfits || []).filter(o => o && o.items && CATS.every(k => !o.items[k] || E.byId(o.items[k]))).map(o => {
-    const c = E.decorate({ items: o.items, w: wxFor(day), vibe }); if (o.name) c.name = String(o.name).slice(0, 40); if (o.why) c.reason = String(o.why).slice(0, 240); return c;
+  const day = o.day != null ? o.day : parseDay(q.toLowerCase()), vibe = o.vibe || parseVibe(q.toLowerCase()) || 'Casual';
+  const cards = (j.outfits || []).filter(x => x && x.items && CATS.every(k => !x.items[k] || E.byId(x.items[k]))).map(x => {
+    const c = E.decorate({ items: x.items, w: wxFor(day), vibe }); c.fromAI = true; if (x.name) c.name = String(x.name).slice(0, 40); if (x.why) c.reason = String(x.why).slice(0, 240); return c;
   });
-  if (cards[0]) CH.current = cards[0];
-  return { t: String(j.reply || 'Here you go.').slice(0, 900), x: cards.map(cardHtml).join(''), q: j.quick && j.quick.length ? j.quick.slice(0, 3).map(s => String(s).slice(0, 60)) : null };
+  return { t: String(j.reply || 'Here you go.').slice(0, 900), cards, x: cards.map(cardHtml).join(''), q: j.quick && j.quick.length ? j.quick.slice(0, 3).map(x => String(x).slice(0, 60)) : null };
+}
+/** Work out the answer: plan questions first (instant), then the AI or the style rules. */
+async function think(q) {
+  const lq = q.toLowerCase();
+  if (CH.plan && CH.plan.waiting) {
+    const p = CH.plan, k = p.waiting, v = k === 'vibe' ? parseVibe(lq) : parseLegs(lq);
+    if (v) { p[k] = v; p.waiting = null; if (!p.legs) p.legs = parseLegs(lq); if (!p.vibe) p.vibe = parseVibe(lq); return planStep(q); }
+    CH.plan = null; // not an answer to our question, so treat it as a new one
+  }
+  const r = route(q);
+  if (r.intent === 'suggest') { CH.plan = { day: r.day, vibe: r.vibe, legs: r.legs, q }; return planStep(q); }
+  if (r.intent === 'more' && CH.last) { CH.plan = Object.assign({}, CH.last, { more: true }); return planStep(q); }
+  if (r.intent === 'replan') { CH.plan = { day: CH.last ? CH.last.day : 0, q: CH.last ? CH.last.q : q }; return planStep(q); }
+  if (/^try (shorts|long pants) instead/.test(lq) && CH.last) { CH.plan = Object.assign({}, CH.last, { legs: /shorts/.test(lq) ? 'short' : 'long', why: '' }); return planStep(q); }
+  if (/^add (clothes|a piece|pieces)/.test(lq)) { setTimeout(() => { closeChat(); addSheet(); }, 400); return { t: 'Opening your closet. Add a few pieces and ask me again.' }; }
+  if (S.ai.on && ['save', 'swap', 'reset'].indexOf(r.intent) < 0) {
+    try { const h = helperCands(r); const a = await askAI(q, { cands: h.cands, need: h.need }); if (a.cards[0]) CH.current = a.cards[0]; return a; }
+    catch (e) { const res = respond(q); res.note = aiFail(e); if (e.status >= 500) checkAI(); return res; }
+  }
+  await wait(reduce ? 60 : 450);
+  return respond(q);
 }
 const scrollEnd = () => cbody.scrollTo({ top: cbody.scrollHeight, behavior: reduce ? 'auto' : 'smooth' });
-async function ask(q) {
+async function ask(q, opt) {
+  opt = opt || {};
   q = String(q || '').trim().slice(0, 500);
   if (CH.busy || !q) return;
-  const pre = route(q);
-  if (pre.intent === 'reset') return chatReset();
+  if (route(q).intent === 'reset') return chatReset();
   CH.busy = true;
   const hl = $('.hello', cbody); if (hl) hl.remove();
   $$('.qrs', cbody).forEach(n => n.remove());
-  const me = document.createElement('div'); me.className = 'msg me'; me.innerHTML = '<div></div>'; me.firstChild.textContent = q; cbody.appendChild(me);
+  const me = document.createElement('div'); me.className = 'msg me' + (opt.voice ? ' said' : ''); me.innerHTML = '<div></div>'; me.firstChild.textContent = q; cbody.appendChild(me);
   const ai = document.createElement('div'); ai.className = 'msg ai';
   ai.innerHTML = '<span class="mini"></span><div class="txt"><span class="dots"><i></i><i></i><i></i></span></div>';
   cbody.appendChild(ai); scrollEnd();
-  let r, note = '';
-  const local = ['save', 'swap'].indexOf(pre.intent) > -1 && CH.current;
-  if (S.ai.on && !local) {
-    try { r = await askAI(q); }
-    catch (e) { r = respond(q); note = e.status === 401 ? 'Add your access code in Settings to use the AI stylist.' : S.ai.provider === 'local' ? 'Your PC’s AI didn’t answer (' + (e.message || 'no reply') + '), so here’s my quick take.' : ''; if (e.status >= 500) checkAI(); }
-  } else { await wait(reduce ? 100 : 500); r = respond(q); }
+  let r;
+  try { r = await think(q); } catch (e) { r = { t: 'Something went wrong on my side. Try that again?' }; }
   const txt = $('.txt', ai); txt.textContent = '';
-  if (note) { const n = document.createElement('span'); n.className = 'note'; n.textContent = note; txt.appendChild(n); }
+  if (r.note) { const n = document.createElement('span'); n.className = 'note'; n.textContent = r.note; txt.appendChild(n); }
   const body = document.createElement('span'); txt.appendChild(body);
+  if (opt.voice || CH.voice) speak(r.t);
   const words = r.t.split(' ');
   for (let i = 0; i < words.length; i++) { body.textContent += (i ? ' ' : '') + words[i]; if (i % 8 === 0) scrollEnd(); if (!reduce) await wait(22); }
   if (r.x) { const d = document.createElement('div'); d.innerHTML = r.x; while (d.firstChild) txt.appendChild(d.firstChild); }
@@ -1153,28 +1285,48 @@ async function ask(q) {
   CH.hist.push({ role: 'user', text: q }, { role: 'assistant', text: r.t });
   CH.busy = false; scrollEnd();
 }
+/* ---------- voice: talk to the stylist, and it talks back when you do ---------- */
+function speak(t) {
+  try {
+    if (!window.speechSynthesis || !t) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(t.replace(/°/g, ' degrees'));
+    const vs = speechSynthesis.getVoices(), v = vs.filter(x => /en-ZA/i.test(x.lang))[0] || vs.filter(x => /^en-GB/i.test(x.lang))[0] || vs.filter(x => /^en/i.test(x.lang))[0];
+    if (v) u.voice = v; u.rate = 1.03;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
 $('#comp').addEventListener('submit', e => { e.preventDefault(); const v = $('#q').value.trim(); if (!v) return; $('#q').value = ''; ask(v); });
 if (window.visualViewport) {
   const vv = window.visualViewport;
   const fix = () => { const off = Math.max(0, window.innerHeight - vv.height - vv.offsetTop); $('#comp').style.transform = off > 60 ? 'translateY(' + (-off + 8) + 'px)' : ''; };
   vv.addEventListener('resize', fix); vv.addEventListener('scroll', fix);
 }
+/* Tap the mic and talk. Safari's speech recognition is used when it works; inside the Home Screen
+   app iOS sometimes blocks it, so we fall back to the keyboard's own dictation mic. */
+function keyboardDictation() {
+  const q = $('#q'); q.focus();
+  toast('Tap the mic on your keyboard', 'iPhone dictation works everywhere. I’ll read my answer out loud.');
+  CH.voice = true;
+}
 $('#mic').addEventListener('click', () => {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) return toast('Voice isn’t available here', 'Type your question instead.');
+  if (!SR) return keyboardDictation();
+  try { speechSynthesis && speechSynthesis.cancel(); } catch (e) {}
   const v = document.createElement('div'); v.className = 'voice';
   let bars = ''; for (let i = 0; i < 11; i++) bars += '<i style="animation-delay:' + (i * 0.07).toFixed(2) + 's"></i>';
-  v.innerHTML = '<div class="wave">' + bars + '</div><b>Listening…</b><small></small><button class="btn ghost" type="button">Cancel</button>';
+  v.innerHTML = '<div class="wave">' + bars + '</div><b>Listening…</b><small>Try “What should I wear tomorrow? I have work.”</small><div class="acts2"><button class="btn ghost" type="button" data-v="cancel">Cancel</button><button class="btn accent" type="button" data-v="done">Done</button></div>';
   chat.appendChild(v);
-  let rec, fin = ''; const sm = $('small', v);
-  try { rec = new SR(); } catch (e) { v.remove(); return toast('Voice isn’t available here', 'Type instead.'); }
-  rec.lang = 'en-ZA'; rec.interimResults = true; rec.continuous = false;
-  rec.onresult = ev => { let t = ''; for (let j = 0; j < ev.results.length; j++) t += ev.results[j][0].transcript; fin = t; sm.textContent = '“' + t + '”'; };
-  rec.onerror = () => { v.remove(); toast('Couldn’t hear you', 'Check microphone access, or type instead.'); };
-  rec.onend = () => { if (!v.parentNode) return; v.remove(); if (fin.trim()) ask(fin.trim()); };
-  $('button', v).onclick = () => { fin = ''; try { rec.abort(); } catch (e) {} v.remove(); };
-  try { rec.start(); } catch (e) { v.remove(); toast('Voice isn’t available here', 'Type instead.'); }
+  let rec, fin = '', heard = false; const sm = $('small', v);
+  try { rec = new SR(); } catch (e) { v.remove(); return keyboardDictation(); }
+  rec.lang = 'en-ZA'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+  rec.onresult = ev => { let t = ''; for (let j = 0; j < ev.results.length; j++) t += ev.results[j][0].transcript; fin = t; heard = true; sm.textContent = '“' + t + '”'; };
+  rec.onerror = ev => { v.remove(); if (ev && /not-allowed|service-not-allowed|audio-capture/.test(ev.error)) return keyboardDictation(); if (ev && ev.error === 'no-speech') return toast('I didn’t catch that', 'Tap the mic and try again.'); keyboardDictation(); };
+  rec.onend = () => { if (!v.parentNode) return; v.remove(); if (fin.trim()) ask(fin.trim(), { voice: true }); else if (!heard) toast('I didn’t catch that', 'Tap the mic and try again.'); };
+  v.onclick = e => { const b = e.target.closest('[data-v]'); if (!b) return; if (b.dataset.v === 'cancel') { fin = ''; try { rec.abort(); } catch (x) {} v.remove(); } else { try { rec.stop(); } catch (x) {} } };
+  try { rec.start(); haptic(); } catch (e) { v.remove(); keyboardDictation(); }
 });
+$('#q').addEventListener('keydown', e => { if (e.key !== 'Enter') CH.voice = CH.voice && e.key === 'Unidentified'; });
 
 /* ---------- onboarding ---------- */
 function onboarding() {

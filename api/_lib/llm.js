@@ -41,6 +41,28 @@ const REASONS = {
   error: 'The local AI returned an error.'
 };
 
+const VISION = /(^|[-_/.\s])(vl|vision|llava|pixtral|minicpm-?v|gemma-?3|moondream|smolvlm|internvl)/i;
+/** Pick the model to talk to: LLM_MODEL when it's loaded, otherwise the loaded one (vision models first).
+    Switching models in LM Studio then just works, without touching Vercel. */
+export function pickModel(ids, wanted) {
+  const chat = ids.filter(id => !/embed|rerank|whisper|tts/i.test(id));
+  if (wanted && ids.indexOf(wanted) > -1) return wanted;
+  if (wanted) { const w = wanted.toLowerCase(), near = chat.filter(id => id.toLowerCase().indexOf(w) > -1 || w.indexOf(id.toLowerCase()) > -1)[0]; if (near) return near; }
+  return chat.filter(id => VISION.test(id))[0] || chat[0] || '';
+}
+let cached = { at: 0, id: '', key: '' };
+async function resolveModel() {
+  const c = cfg();
+  const key = c.base + '|' + c.model;
+  if (Date.now() - cached.at < 60000 && cached.id && cached.key === key) return cached.id;
+  try {
+    const res = await timed(c.base + '/models', { headers: headers() }, 6000);
+    const ids = res.ok ? (((await res.json().catch(() => null)) || {}).data || []).map(m => m.id) : [];
+    cached = { at: Date.now(), id: pickModel(ids, c.model) || c.model, key };
+  } catch { cached = { at: Date.now(), id: c.model, key }; }
+  return cached.id;
+}
+
 /** Which link of app → ngrok → PC → LM Studio → model is working. */
 export async function localStatus() {
   const c = cfg();
@@ -52,8 +74,10 @@ export async function localStatus() {
     if (ngrokErr || res.status === 502 || res.status === 504) return { online: false, reason: 'server_down', detail: REASONS.server_down };
     if (!res.ok) return { online: false, reason: 'error', detail: REASONS.error + ' (' + res.status + ')' };
     const models = (((await res.json().catch(() => null)) || {}).data || []).map(m => m.id);
-    if (c.model && models.indexOf(c.model) < 0) return { online: false, reason: 'model_missing', detail: '“' + c.model + '” isn’t loaded. Loaded: ' + (models.join(', ') || 'none') + '.' };
-    return { online: true, model: c.model || models[0] || '' };
+    const use = pickModel(models, c.model);
+    if (!use) return { online: false, reason: 'model_missing', detail: 'No model is loaded in LM Studio. Load one and try again.' };
+    cached = { at: Date.now(), id: use, key: c.base + '|' + c.model };
+    return { online: true, model: use, vision: VISION.test(use) };
   } catch (e) {
     const t = e && e.name === 'AbortError';
     return { online: false, reason: t ? 'timeout' : 'tunnel_offline', detail: t ? REASONS.timeout : REASONS.tunnel_offline };
@@ -81,16 +105,17 @@ export function firstJson(text) {
 }
 
 /** JSON answer from the local model. Tries a strict JSON schema first, then plain "reply with JSON". */
-export async function localJson({ system, messages, schema, name = 'answer', timeoutMs = 52000, maxTokens = 900 }) {
+export async function localJson({ system, messages, schema, name = 'answer', timeoutMs = 52000, maxTokens = 900, temperature = 0.3 }) {
   const c = cfg();
   if (!c.base) throw new HttpError(503, REASONS.not_configured);
   // Vercel stops the function at 60 s, so both attempts share one budget.
   const deadline = Date.now() + timeoutMs;
+  const model = await resolveModel();
   const all = prepare([{ role: 'system', content: system + '\n\nReply with a single JSON object and nothing else. No explanations, no markdown.' }].concat(messages));
   const call = async withSchema => {
     const left = deadline - Date.now();
     if (left < 3000) throw new HttpError(504, REASONS.timeout);
-    const body = { model: c.model || undefined, temperature: 0.3, max_tokens: maxTokens, stream: false, messages: all };
+    const body = { model: model || undefined, temperature, max_tokens: maxTokens, stream: false, messages: all };
     if (withSchema) body.response_format = { type: 'json_schema', json_schema: { name, strict: true, schema } };
     let res;
     try { res = await timed(c.base + '/chat/completions', { method: 'POST', headers: headers(), body: JSON.stringify(body) }, left); }

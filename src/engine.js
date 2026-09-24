@@ -106,8 +106,8 @@ export function harmony(p, profile) {
     else if (b.w <= 0.8) { s -= 0.5; label = cap(a.name) + ' pop'; story = cap(a.name) + ' leads; the small ' + b.name + ' detail is fine.'; }
     else { s -= 2.5; label = 'Colour clash'; clash = [a.name, b.name]; story = cap(a.name) + ' and ' + b.name + ' clash. Swap one for a neutral.'; }
   }
-  const tb = [p.top, p.bottom];
-  if (tb[0] && tb[1] && ((tb[0].colours[0] === 'navy' && tb[1].colours[0] === 'black') || (tb[0].colours[0] === 'black' && tb[1].colours[0] === 'navy'))) { s -= 1; story += ' Navy right next to black can look like a mismatch.'; }
+  const tb = [p.top, p.bottom]; let nb = false;
+  if (tb[0] && tb[1] && ((tb[0].colours[0] === 'navy' && tb[1].colours[0] === 'black') || (tb[0].colours[0] === 'black' && tb[1].colours[0] === 'navy'))) { s -= 1; nb = true; story += ' Navy right next to black can look like a mismatch.'; }
   const busy = ['top', 'layer', 'bottom'].filter(k => p[k] && p[k].pattern !== 'solid');
   const patternClash = busy.length > 1;
   if (patternClash) { s -= 3; story = 'Two patterns (the ' + nm(p[busy[0]]) + ' and the ' + nm(p[busy[1]]) + ') are fighting. Keep one and go plain on the other.'; label = 'Pattern clash'; }
@@ -119,7 +119,7 @@ export function harmony(p, profile) {
   }
   const love = profile.love || [], avoid = profile.avoid || [];
   CATS.forEach(k => { const it = p[k]; if (!it) return; if (it.colours.some(c => avoid.indexOf(c) > -1)) s -= 3; if (it.colours.some(c => love.indexOf(c) > -1)) s += 0.4; });
-  return { score: s, label, story, clash, echo, tie, patternClash, swatches: pal.slice(0, 5).map(x => x[0]) };
+  return { score: s, label, story, clash, echo, tie, patternClash, navyBlack: nb, swatches: pal.slice(0, 5).map(x => x[0]) };
 }
 
 /* ---------- silhouette ---------- */
@@ -149,6 +149,8 @@ export function createEngine(S) {
   const resolve = ids => { const p = {}; CATS.forEach(k => { if (ids[k]) { const it = byId(ids[k]); if (it) p[k] = it; } }); return p; };
   const comboKey = c => CATS.map(k => c[k] || '-').join('|');
   const coreKey = c => [c.top, c.bottom, c.shoes].join('|');
+  // a "look" is the top and bottoms together: the same pair with other shoes reads as the same style
+  const lookKey = c => [c.top, c.bottom].join('|');
 
   function lastWornDays(id) {
     let best = Infinity; const now = today0().getTime();
@@ -197,9 +199,10 @@ export function createEngine(S) {
   function candidates(opt) {
     opt = opt || {};
     const w = opt.weather, vibe = opt.vibe || 'Casual', lock = opt.lock || {}, withWish = !!opt.withWish, limit = opt.limit || 12;
+    const exclude = opt.exclude || {}, legs = opt.bottoms; // legs: 'short' | 'long' | undefined
     const pool = k => {
       if (lock[k] !== undefined) return [lock[k]];
-      const ids = S.items.filter(i => i.category === k && (i.owned || withWish)).map(i => i.id);
+      const ids = S.items.filter(i => i.category === k && (i.owned || withWish) && !(k === 'bottom' && legs && (legs === 'short') !== isShort(i))).map(i => i.id);
       return k === 'layer' || k === 'extra' ? [null].concat(ids) : ids;
     };
     const P = {}; CATS.forEach(k => { P[k] = pool(k); });
@@ -226,16 +229,19 @@ export function createEngine(S) {
     beam.forEach(c => P.extra.forEach(x => { const n = Object.assign({}, c); n.extra = x; fin.push({ ids: n, r: score(n, w, vibe, false) }); }));
     fin.sort((a, b) => b.r.score - a.r.score);
     const best = {}, list = [];
-    fin.forEach(f => { const k = coreKey(f.ids); if (!best[k]) { best[k] = 1; list.push(f); } });
+    const key = opt.byLook ? lookKey : coreKey;
+    fin.forEach(f => { const k = key(f.ids); if (!best[k] && !exclude[k]) { best[k] = 1; list.push(f); } });
     const anyClean = list.some(f => !f.r.hard);
-    const pool2 = anyClean ? list.filter(f => !f.r.hard) : list;
-    const picked = [], seenTop = {}, seenBottom = {};
+    let pool2 = anyClean ? list.filter(f => !f.r.hard) : list;
+    // "good only": no clashes and not far below the best look, so we never pad the list with weak fits
+    if (opt.goodOnly && pool2.length) { const top = pool2[0].r.score; pool2 = pool2.filter(f => !f.r.hard && !f.r.colour.clash && !f.r.colour.patternClash && !f.r.colour.navyBlack && f.r.score >= top - 4); }
+    const picked = [], seenTop = {}, seenBottom = {}, seenShoe = {};
     const rest = pool2.slice();
     while (picked.length < limit && rest.length) {
       let bi = 0, bv = -Infinity;
-      rest.forEach((f, i) => { const v = f.r.score - (seenTop[f.ids.top] || 0) * 1.5 - (seenBottom[f.ids.bottom] || 0) * 0.8; if (v > bv) { bv = v; bi = i; } });
+      rest.forEach((f, i) => { const v = f.r.score - (seenTop[f.ids.top] || 0) * 2.5 - (seenBottom[f.ids.bottom] || 0) * 1.2 - (seenShoe[f.ids.shoes] || 0) * 0.6; if (v > bv) { bv = v; bi = i; } });
       const f = rest.splice(bi, 1)[0];
-      seenTop[f.ids.top] = (seenTop[f.ids.top] || 0) + 1; seenBottom[f.ids.bottom] = (seenBottom[f.ids.bottom] || 0) + 1;
+      seenTop[f.ids.top] = (seenTop[f.ids.top] || 0) + 1; seenBottom[f.ids.bottom] = (seenBottom[f.ids.bottom] || 0) + 1; seenShoe[f.ids.shoes] = (seenShoe[f.ids.shoes] || 0) + 1;
       picked.push(f);
     }
     return picked.map(f => decorate({ items: stripNull(f.ids), score: f.r.score, notes: f.r.notes, relaxed: !!f.r.hard, w, vibe }, f.r));
@@ -321,7 +327,13 @@ export function createEngine(S) {
     return { fits, partners: n, level, verdict, best: good.slice(0, 3).length ? good.slice(0, 3) : cs.slice(0, 1) };
   }
 
-  return { byId, resolve, comboKey, lastWornDays, score, candidates, decorate, nameFor, reasonFor, rate, compat };
+  /** Which slot is holding the closet back: the one with the fewest pieces (for the given leg length). */
+  function shortOf(legs) {
+    const n = k => S.items.filter(i => i.owned && i.category === k && !(k === 'bottom' && legs && (legs === 'short') !== isShort(i))).length;
+    return ['top', 'bottom', 'shoes'].map(k => [k, n(k)]).sort((a, b) => a[1] - b[1])[0][0];
+  }
+
+  return { byId, resolve, comboKey, coreKey, lookKey, lastWornDays, score, candidates, decorate, nameFor, reasonFor, rate, compat, shortOf };
 }
 
 /** Colours that go with a given colour, for "what goes with my red jersey?" */
